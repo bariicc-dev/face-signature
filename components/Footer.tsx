@@ -7,7 +7,7 @@ const WHATSAPP_URL = 'https://wa.me/33695241807?text=Bonjour%20Face%20Signature%
 export function Footer() {
   return (
     <footer style={{ padding: '52px 24px 32px', background: 'var(--bg-2)', borderTop: '1px solid var(--line)' }}>
-      <div style={{ maxWidth: 1080, margin: '0 auto', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 26 }} className="loc-grid">
+      <div style={{ maxWidth: 1080, margin: '0 auto', display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: 26 }} className="footer-grid">
         <div>
           <div style={{ marginBottom: 16 }}><Link href="/" aria-label="Face Signature, accueil"><Logo /></Link></div>
           <p style={{ color: 'var(--mute)', fontSize: 13, maxWidth: 360, margin: 0 }}>
@@ -37,6 +37,7 @@ export function Footer() {
         <span>© 2026 Face Signature</span>
         <span>Réservation sans paiement en ligne</span>
       </div>
+      <style>{`@media (max-width: 760px) { .footer-grid { grid-template-columns: 1fr !important; } }`}</style>
     </footer>
   );
 }
