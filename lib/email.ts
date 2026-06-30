@@ -46,6 +46,9 @@ export async function sendBookingEmails(booking: {
   duration: number;
   total: number;
   notes?: string | null;
+  calendarSyncStatus?: 'synced' | 'error' | 'skipped';
+  calendarEventLink?: string | null;
+  calendarSyncError?: string | null;
 }) {
   const d = new Date(booking.appointmentAt);
   const dateStr = formatDateFr(d);
@@ -61,6 +64,18 @@ export async function sendBookingEmails(booking: {
   )}&dates=${fmt(d)}/${fmt(end)}&details=${encodeURIComponent(
     `Rendez-vous Face Signature\n${booking.serviceName}\nDurée: ${booking.duration} min\nPrix: ${booking.total}€`
   )}&location=${encodeURIComponent('152 Rue de Charenton, 75012 Paris')}`;
+
+  const calendarAdminNotice = booking.calendarSyncStatus === 'synced'
+    ? `<div style="background:#edf7ed;border:1px solid #7fb77e;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#2f6b33;">
+        Agenda OK${booking.calendarEventLink ? ` · <a href="${booking.calendarEventLink}" style="color:#2f6b33;font-weight:600;">ouvrir l'événement</a>` : ''}
+      </div>`
+    : booking.calendarSyncStatus === 'error'
+      ? `<div style="background:#fff3f0;border:1px solid #d66a57;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#8d3528;">
+          Agenda erreur · le RDV est bien enregistré, vérifiez les logs Vercel.${booking.calendarSyncError ? `<br/><span style="font-size:12px;">${booking.calendarSyncError}</span>` : ''}
+        </div>`
+      : `<div style="background:#fff8e8;border:1px solid #c9a572;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#7a5d3f;">
+          Agenda non configuré · le RDV est bien enregistré.
+        </div>`;
 
   // === Client email ===
   const clientHtml = shell(
@@ -98,9 +113,10 @@ export async function sendBookingEmails(booking: {
   const adminHtml = shell(
     `Nouvelle réservation — ${booking.clientName}`,
     `
-    <div style="background:#fff8e8;border:1px solid #c9a572;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#7a5d3f;">
+    <div style="background:#fff8e8;border:1px solid #c9a572;border-radius:10px;padding:12px 16px;margin-bottom:12px;font-size:13px;color:#7a5d3f;">
       ✨ Nouvelle réservation à confirmer
     </div>
+    ${calendarAdminNotice}
     <h1 style="font-size:22px;font-weight:500;letter-spacing:-.01em;margin:0 0 24px;">Nouvelle réservation</h1>
 
     <h3 style="font-size:13px;color:#8a7e72;letter-spacing:.08em;text-transform:uppercase;margin:0 0 10px;font-weight:500;">Cliente</h3>
@@ -123,7 +139,7 @@ export async function sendBookingEmails(booking: {
     </table>
 
     <div style="display:flex;gap:8px;margin-top:24px;">
-      <a href="${gcal}" style="flex:1;display:inline-block;background:#c9a572;color:#0f0d0c;text-decoration:none;padding:12px 18px;border-radius:999px;font-size:13px;font-weight:500;text-align:center;">📅 Google Calendar</a>
+      <a href="${booking.calendarEventLink || gcal}" style="flex:1;display:inline-block;background:#c9a572;color:#0f0d0c;text-decoration:none;padding:12px 18px;border-radius:999px;font-size:13px;font-weight:500;text-align:center;">📅 Google Calendar</a>
       <a href="https://wa.me/${booking.clientPhone.replace(/\D/g, '')}" style="flex:1;display:inline-block;background:#25D366;color:#fff;text-decoration:none;padding:12px 18px;border-radius:999px;font-size:13px;font-weight:500;text-align:center;">💬 WhatsApp</a>
     </div>
 
