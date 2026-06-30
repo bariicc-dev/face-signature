@@ -100,6 +100,19 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
   );
 }
 
+function CalendarBadge({ status, link }: { status?: string | null; link?: string | null }) {
+  if (status === 'synced') {
+    const badge = <span className="pill confirmed">Agenda OK</span>;
+    return link ? <a href={link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>{badge}</a> : badge;
+  }
+
+  if (status === 'error') {
+    return <span className="pill cancelled">Agenda erreur</span>;
+  }
+
+  return <span className="pill pending">Agenda non configuré</span>;
+}
+
 function ApptCard({ appt, isNew, onConfirm, onCancel, onComplete, onView }: any) {
   const svc = appt.services;
   const d = new Date(appt.appointment_at);
@@ -126,11 +139,12 @@ function ApptCard({ appt, isNew, onConfirm, onCancel, onComplete, onView }: any)
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--mute)', marginTop: 2 }}>{appt.duration} min</div>
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 7 }}>
           <span className={'pill ' + appt.status}>
             {appt.status === 'confirmed' ? 'Confirmé' : appt.status === 'pending' ? 'En attente' : appt.status === 'completed' ? 'Terminé' : 'Annulé'}
           </span>
-          <div style={{ fontSize: 20, fontWeight: 500, color: 'var(--gold)', letterSpacing: '-.01em', marginTop: 8 }}>{appt.total}€</div>
+          <CalendarBadge status={appt.calendar_sync_status} link={appt.google_event_link} />
+          <div style={{ fontSize: 20, fontWeight: 500, color: 'var(--gold)', letterSpacing: '-.01em' }}>{appt.total}€</div>
         </div>
       </div>
       <div>
@@ -157,6 +171,7 @@ function ApptCard({ appt, isNew, onConfirm, onCancel, onComplete, onView }: any)
             <a className="icon-btn" href={`tel:${appt.client_phone}`} onClick={e => e.stopPropagation()}><Icon n="phone" s={15} /></a>
             <a className="icon-btn" href={`https://wa.me/${phone}`} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#25D366' }}><Icon n="wa" s={15} /></a>
             <a className="icon-btn" href={`mailto:${appt.client_email}`} onClick={e => e.stopPropagation()}><Icon n="mail" s={15} /></a>
+            {appt.google_event_link && <a className="icon-btn" href={appt.google_event_link} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} title="Ouvrir dans Google Calendar"><Icon n="calendar" s={15} /></a>}
             <button className="icon-btn" onClick={(e) => { e.stopPropagation(); if (confirm('Annuler ce rendez-vous ?')) onCancel(appt.id); }}><Icon n="close" s={15} /></button>
           </>
         )}
@@ -232,14 +247,14 @@ function TabAppointments({ bookings, onConfirm, onCancel, onComplete }: any) {
   );
 
   const exportCSV = () => {
-    const rows = [['Date', 'Heure', 'Cliente', 'Téléphone', 'Email', 'Soin', 'Statut', 'Total']];
+    const rows = [['Date', 'Heure', 'Cliente', 'Téléphone', 'Email', 'Soin', 'Statut', 'Agenda', 'Total']];
     bookings.forEach((a: any) => {
       const d = new Date(a.appointment_at);
       rows.push([
         d.toLocaleDateString('fr-FR'),
         d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
         a.client_name, a.client_phone || '', a.client_email || '',
-        a.services?.name || '', a.status, a.total + '€',
+        a.services?.name || '', a.status, a.calendar_sync_status || '', a.total + '€',
       ]);
     });
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -344,6 +359,12 @@ function TabSettings({ user }: any) {
         {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map(d => (
           <Row key={d} label={d} value={d === 'Dimanche' ? 'Sur RDV' : '10:00 — 19:00'} />
         ))}
+      </Card>
+
+      <Card label="Agenda Google">
+        <div style={{ fontSize: 13, color: 'var(--mute)', lineHeight: 1.6 }}>
+          Les nouvelles réservations sont enregistrées dans Supabase puis copiées dans l'agenda Google configuré côté serveur. Si le badge indique "Agenda erreur", le RDV reste bien présent ici et les logs Vercel donnent le détail.
+        </div>
       </Card>
 
       <Card label="Astuces">
