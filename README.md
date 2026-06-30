@@ -1,225 +1,216 @@
-# Face Signature — Plateforme complète
+# Face Signature — Plateforme réservation
 
-Site vitrine + réservations + admin mobile-first.
-Vraies emails, vraie base de données, déployable gratuitement.
+Site vitrine + réservation + admin mobile-first pour Face Signature.
 
----
-
-## 🎯 Ce que tu obtiens
-
-- **Site public** : accueil, tarifs, réservation, adresse
-- **Système de réservation** : avec calendrier, anti-double-booking
-- **Emails automatiques** : à la cliente + à Mariam à chaque résa
-- **Admin séparé** sur `/admin` : protégé par login, mobile-first
-- **App installable** sur l'iPhone de Mariam (PWA, "Ajouter à l'écran d'accueil")
-- **Notifications temps réel** dans l'admin quand quelqu'un réserve
+Le système enregistre les RDV dans Supabase, envoie les emails via Resend, puis copie automatiquement chaque nouveau RDV dans l'agenda Google de la propriétaire avec l'API Google Calendar.
 
 ---
 
-## 🚀 Déploiement (30 minutes la première fois)
+## Fonctionnalités
 
-Tu vas avoir besoin de **3 comptes gratuits** :
-
-| Service | À quoi ça sert | Lien |
-|---|---|---|
-| **Vercel** | Hébergement du site | [vercel.com](https://vercel.com) |
-| **Supabase** | Base de données + login admin | [supabase.com](https://supabase.com) |
-| **Resend** | Envoi d'emails | [resend.com](https://resend.com) |
-
-Tous gratuits, plans suffisants pour Face Signature toute l'année.
-
----
-
-### Étape 1 — Supabase (base de données)
-
-1. Va sur [supabase.com](https://supabase.com) → **New project**
-2. Nom : `face-signature` · choisis un mot de passe DB (note-le)
-3. Région : **West EU (Paris/Frankfurt)** pour la rapidité
-4. Une fois le projet créé, va dans **SQL Editor** (icône `</>`) → **New Query**
-5. Ouvre le fichier `supabase-schema.sql` de ce projet, copie-colle tout, clique **Run** ✅
-6. Va dans **Authentication → Users → Add user → Create new user**
-   - Email : celui de Mariam (ex: `mariam@facesignature.paris`)
-   - Mot de passe : choisis-en un solide, donne-le à Mariam
-   - ✅ Auto Confirm User
-7. Va dans **Project Settings → API** et note 3 valeurs :
-   - `Project URL` → `https://xxx.supabase.co`
-   - `anon public` (clé)
-   - `service_role` (clé secrète — garde-la secrète)
+- Site public : accueil, tarifs, réservation, adresse
+- Réservation avec contrôle anti-double-booking basé sur Supabase
+- Emails automatiques cliente + admin
+- Lien manuel "Ajouter à Google Calendar" pour la cliente
+- Copie automatique du RDV dans l'agenda Google propriétaire
+- Statut agenda visible dans l'admin : `Agenda OK`, `Agenda erreur`, `Agenda non configuré`
+- Admin `/admin` protégé par login Supabase
+- Dashboard mobile-first avec notifications temps réel
 
 ---
 
-### Étape 2 — Resend (envoi des emails)
+## Architecture
 
-1. Va sur [resend.com](https://resend.com) → crée un compte
-2. **API Keys → Create API Key** → nom `face-signature` → copie la clé (`re_...`)
-3. Pour les emails de test, tu peux utiliser `onboarding@resend.dev` comme expéditeur
-4. **Pour la production**, ajoute le domaine (ex: `facesignature.paris`) dans **Domains → Add Domain** et suis les instructions DNS. Sinon Resend n'enverra qu'à toi-même en mode test.
-
----
-
-### Étape 3 — Vercel (déploiement)
-
-#### A. Mets le projet sur GitHub
-
-```bash
-cd face-signature
-git init
-git add .
-git commit -m "initial"
-# crée un repo sur github.com puis :
-git remote add origin https://github.com/TOI/face-signature.git
-git push -u origin main
+```text
+Cliente /book
+  -> Next.js /api/bookings
+    -> Supabase bookings (source de vérité)
+    -> Google Calendar API events.insert (miroir agenda propriétaire)
+    -> Resend emails cliente + admin
+  -> Admin /admin lit Supabase en temps réel
 ```
 
-#### B. Déploie sur Vercel
+Important : Supabase reste la source de vérité pour les disponibilités publiques. Google Calendar sert à copier les RDV Face Signature dans l'agenda propriétaire. Les événements privés déjà présents dans Google Calendar ne bloquent pas les créneaux publics tant qu'une vraie synchronisation busy/free Google Calendar n'est pas ajoutée.
 
-1. Va sur [vercel.com](https://vercel.com) → **Add New → Project**
-2. Import le repo GitHub `face-signature`
-3. Avant de cliquer **Deploy**, ouvre **Environment Variables** et ajoute :
+---
 
-| Nom | Valeur |
+## Variables d'environnement
+
+Copie `.env.local.example` vers `.env.local` en local, puis ajoute les mêmes variables dans Vercel.
+
+| Nom | Usage |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | l'URL du projet Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | la clé `anon public` |
-| `SUPABASE_SERVICE_ROLE_KEY` | la clé `service_role` |
-| `RESEND_API_KEY` | la clé Resend (`re_...`) |
-| `ADMIN_EMAIL` | email de Mariam où les notifs arrivent |
-| `FROM_EMAIL` | `onboarding@resend.dev` (ou ton domaine vérifié) |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clé publique Supabase anon |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clé serveur Supabase, jamais exposée au navigateur |
+| `RESEND_API_KEY` | Clé API Resend |
+| `ADMIN_EMAIL` | Email qui reçoit les notifications admin |
+| `FROM_EMAIL` | Expéditeur Resend, idéalement domaine vérifié |
+| `GOOGLE_CALENDAR_ID` | ID de l'agenda Google propriétaire à alimenter |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Email du service account Google Cloud |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Clé privée du service account, avec `\n` conservés |
+| `GOOGLE_SERVICE_ACCOUNT_PROJECT_ID` | ID du projet Google Cloud, utile pour l'exploitation |
 
-4. Clique **Deploy**. Attends 1-2 min. ✨
-
-Tu reçois une URL `face-signature-xxx.vercel.app`. Si t'achètes un domaine après (genre `facesignature.paris` ~10€/an), tu le branches en 30 secondes dans Vercel.
-
----
-
-## 📱 Pour Mariam : installer l'admin sur l'iPhone
-
-Une fois déployé, envoie-lui ce message :
-
-> Hello, voici ton espace admin Face Signature 💛
->
-> 1. Ouvre ce lien sur ton iPhone avec **Safari** : `https://face-signature.vercel.app/admin/login`
-> 2. Connecte-toi avec ton email et le mot de passe
-> 3. Une fois connectée, tape sur l'icône **Partager** (carré avec flèche) → **Sur l'écran d'accueil**
-> 4. Ça crée une icône Face Signature comme une vraie app
->
-> À partir de là, tu lances l'app comme Instagram, tu vois toutes les résa en temps réel, tu confirmes / appelles / WhatsApp tes clientes en un tap.
+Aucun secret ne doit être commité. `.env.local` doit rester local.
 
 ---
 
-## 🏃 Lancer en local (pour développer)
+## Étape 1 — Supabase
+
+1. Crée un projet sur [supabase.com](https://supabase.com).
+2. Va dans **SQL Editor → New Query**.
+3. Copie-colle `supabase-schema.sql`, puis clique **Run**.
+4. Va dans **Authentication → Users → Add user → Create new user**.
+5. Crée l'utilisateur admin de Mariam et coche **Auto Confirm User**.
+6. Va dans **Project Settings → API** et récupère :
+   - `Project URL` -> `NEXT_PUBLIC_SUPABASE_URL`
+   - `anon public` -> `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `service_role` -> `SUPABASE_SERVICE_ROLE_KEY`
+
+Pour un projet déjà déployé, le fichier SQL est non destructif : il ajoute les colonnes agenda avec `alter table if exists ... add column if not exists`.
+
+---
+
+## Étape 2 — Resend
+
+1. Crée un compte sur [resend.com](https://resend.com).
+2. Va dans **API Keys → Create API Key** et copie la clé `re_...`.
+3. En test, `FROM_EMAIL=onboarding@resend.dev` fonctionne avec les limites Resend.
+4. En production, ajoute le domaine d'envoi dans **Domains → Add Domain** et configure les DNS. Sans domaine vérifié, Resend limite fortement les destinataires.
+
+L'email admin garde `replyTo` sur l'email de la cliente pour répondre directement.
+
+---
+
+## Étape 3 — Google Calendar
+
+Approche implémentée : service account + agenda partagé. C'est le plus simple pour une propriétaire solo, sans flow OAuth public.
+
+1. Va dans [Google Cloud Console](https://console.cloud.google.com/).
+2. Crée un projet, par exemple `face-signature-calendar`.
+3. Va dans **APIs & Services → Library**.
+4. Active **Google Calendar API**.
+5. Va dans **IAM & Admin → Service Accounts**.
+6. Clique **Create service account**.
+7. Donne un nom, par exemple `face-signature-calendar`.
+8. Ouvre le service account créé, onglet **Keys**.
+9. Clique **Add key → Create new key → JSON**.
+10. Dans le JSON téléchargé, récupère :
+    - `client_email` -> `GOOGLE_SERVICE_ACCOUNT_EMAIL`
+    - `private_key` -> `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`
+    - `project_id` -> `GOOGLE_SERVICE_ACCOUNT_PROJECT_ID`
+11. Dans Google Calendar, ouvre l'agenda propriétaire.
+12. Va dans **Settings and sharing**.
+13. Copie **Calendar ID** -> `GOOGLE_CALENDAR_ID`.
+14. Dans **Share with specific people or groups**, ajoute l'email du service account.
+15. Donne la permission **Make changes to events**.
+
+Limitation Google : un service account ne peut écrire dans un agenda personnel que si cet agenda lui est partagé. Si le compte Google de la propriétaire bloque ce partage, crée un agenda secondaire `Face Signature RDV` et partage cet agenda, ou passe à une intégration OAuth refresh token côté serveur.
+
+---
+
+## Étape 4 — Vercel
+
+1. Va sur [vercel.com](https://vercel.com) → **Add New → Project**.
+2. Importe le repo GitHub.
+3. Dans **Environment Variables**, ajoute toutes les variables listées plus haut.
+4. Pour `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`, colle la clé complète entre guillemets avec les `\n`, par exemple :
+
+```env
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+5. Déploie.
+6. Après modification des variables, redéploie toujours le projet.
+
+---
+
+## Lancer en local
 
 ```bash
-cd face-signature
 cp .env.local.example .env.local
-# remplis .env.local avec tes vraies clés
 npm install
 npm run dev
-# ouvre http://localhost:3000
 ```
 
-Pages disponibles :
+Pages utiles :
+
 - `/` accueil
 - `/prices` tarifs
 - `/book` réservation
 - `/location` adresse
 - `/admin/login` login admin
-- `/admin` dashboard (protégé)
+- `/admin` dashboard
 
 ---
 
-## 🛠️ Modifier les tarifs
+## Tester avant livraison client
 
-Va dans Supabase → **Table Editor → services** → modifie directement. Aucun redéploiement nécessaire.
+1. Lance `npm install`.
+2. Lance `npm run build`.
+3. Lance `npm run lint` si le lint est configuré dans l'environnement.
+4. Ouvre `/` et vérifie l'accueil.
+5. Ouvre `/book`.
+6. Choisis un soin, une date et une heure.
+7. Soumets une réservation avec une vraie adresse email de test.
+8. Vérifie dans Supabase que la ligne `bookings` existe.
+9. Vérifie que `calendar_sync_status` vaut `synced`.
+10. Ouvre le Google Calendar propriétaire et vérifie l'événement.
+11. Vérifie l'email cliente.
+12. Vérifie l'email admin, avec le statut agenda.
+13. Ouvre `/admin`, connecte-toi, vérifie le RDV et le badge agenda.
+14. Confirme puis annule un RDV depuis l'admin pour vérifier les actions existantes.
 
-Pour ajouter un nouveau soin :
-- **Insert row** dans la table `services`
-- Remplis `id` (court, unique, ex: `lip1`), `category`, `name`, `price`, `duration` (en minutes)
-- Le site le récupère automatiquement
+Si `calendar_sync_status=error`, consulte **Vercel → Project → Logs**. Le RDV et les emails restent indépendants de l'échec agenda.
 
 ---
 
-## 🔧 Comment ça marche
+## Ce qu'il faut envoyer à la cliente
 
-```
-                    ┌──────────────┐
-                    │   CLIENTE    │
-                    │  (mobile)    │
-                    └──────┬───────┘
-                           │ réserve sur /book
-                           ▼
-              ┌──────────────────────────┐
-              │  Next.js sur VERCEL      │
-              │  /api/bookings (POST)    │
-              └──────┬───────────────────┘
-                     │
-            ┌────────┴────────┐
-            ▼                 ▼
-    ┌──────────────┐    ┌──────────────┐
-    │  SUPABASE    │    │   RESEND     │
-    │  (database)  │    │  (emails)    │
-    └──────┬───────┘    └──────┬───────┘
-           │                   │
-           │ realtime          │ envoie 2 emails
-           │ push              │
-           ▼                   ▼
-    ┌──────────────┐    ┌──────────────┐
-    │  ADMIN       │    │ CLIENTE      │
-    │  (Mariam)    │    │ + ADMIN      │
-    │  /admin      │    │ (boîte mail) │
-    └──────────────┘    └──────────────┘
+```text
+Hello Mariam, voici ton espace admin Face Signature :
+https://TON-DOMAINE/admin/login
+
+1. Ouvre le lien sur iPhone avec Safari.
+2. Connecte-toi avec ton email et le mot de passe fourni.
+3. Appuie sur Partager puis Sur l'écran d'accueil.
+4. Une icône Face Signature sera ajoutée comme une app.
+
+Les nouveaux RDV arrivent dans l'admin, par email, et dans ton agenda Google.
 ```
 
 ---
 
-## ❓ FAQ
+## Modifier les tarifs
 
-**Combien ça coûte ?**
-Zéro. Tant que tu restes sous : 500MB DB Supabase, 100 emails/jour Resend (3000/mois), trafic Vercel raisonnable (gratuit jusqu'à 100GB/mois).
+Va dans Supabase → **Table Editor → services**. Modifie les prix, durées ou noms directement. Aucun redéploiement n'est nécessaire.
 
-**Et si je dépasse ?**
-Tu te poses la question quand tu auras 100 résa par jour. Pour l'instant, t'es très très large.
-
-**Comment changer le mot de passe admin ?**
-Supabase → Authentication → Users → clique sur Mariam → Send password recovery (un lien lui est envoyé).
-
-**Comment ajouter une autre personne admin ?**
-Supabase → Authentication → Users → Add user. Tout user connecté a accès à `/admin`.
-
-**Les emails partent vraiment ?**
-Oui, dès que tu ajoutes la clé Resend dans Vercel. Vérifie ton dashboard Resend pour voir les envois.
-
-**Comment voir les logs si quelque chose foire ?**
-Vercel → ton projet → Logs. Tu verras chaque appel API en temps réel.
+Pour ajouter un soin, insère une ligne dans `services` avec un `id` unique, une catégorie, un nom, un prix, une durée et un ordre d'affichage.
 
 ---
 
-## 📁 Structure du projet
+## Limites connues
 
-```
+- Les disponibilités publiques sont calculées depuis les RDV Supabase uniquement.
+- Les événements privés déjà présents dans Google Calendar ne bloquent pas encore les créneaux publics.
+- L'intégration actuelle est un miroir à sens unique : Supabase -> Google Calendar.
+- Une future amélioration peut interroger Google Calendar FreeBusy avant d'afficher les créneaux.
+- La suppression ou l'annulation d'un RDV dans l'admin ne supprime pas encore automatiquement l'événement Google Calendar.
+
+---
+
+## Structure
+
+```text
 face-signature/
-├── app/
-│   ├── page.tsx              # Accueil
-│   ├── prices/page.tsx       # Tarifs
-│   ├── book/                 # Réservation
-│   ├── confirm/page.tsx      # Confirmation post-réservation
-│   ├── location/page.tsx     # Adresse
-│   ├── admin/                # Espace admin (protégé)
-│   │   ├── page.tsx
-│   │   ├── AdminDashboard.tsx
-│   │   ├── login/page.tsx
-│   │   └── layout.tsx
-│   └── api/bookings/route.ts # API : crée résa + envoie emails
-├── components/               # Composants partagés
-├── lib/
-│   ├── supabase-browser.ts   # Client DB côté navigateur
-│   ├── supabase-server.ts    # Client DB côté serveur
-│   └── email.ts              # Templates + envoi Resend
-├── public/                   # Icônes, manifest PWA
-├── supabase-schema.sql       # Script de création BD
-└── README.md                 # Ce fichier
+├── app/api/bookings/route.ts   # Création booking + sync agenda + emails
+├── app/book/                   # Flow réservation public
+├── app/admin/                  # Dashboard admin
+├── lib/email.ts                # Templates Resend
+├── lib/google-calendar.ts      # Google Calendar API server-only
+├── lib/supabase-server.ts      # Supabase serveur/admin
+├── lib/supabase-browser.ts     # Supabase navigateur
+├── public/                     # PWA icons
+├── supabase-schema.sql         # Schéma + migration Supabase
+└── README.md
 ```
-
----
-
-Made with ❤️ for Face Signature.
