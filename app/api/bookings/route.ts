@@ -57,7 +57,6 @@ export async function POST(req: NextRequest) {
       notes: notes || null,
       status: 'pending',
       is_new: true,
-      calendar_sync_status: 'pending',
     }).select().single();
 
     if (insErr || !booking) {
