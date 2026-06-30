@@ -30,11 +30,32 @@ create table if not exists bookings (
   notes text,
   status text default 'pending' check (status in ('pending','confirmed','cancelled','completed')),
   is_new boolean default true,
+  google_event_id text,
+  google_event_link text,
+  calendar_sync_status text default 'pending',
+  calendar_sync_error text,
   created_at timestamptz default now()
 );
 
+-- Safe migration for existing projects
+alter table if exists bookings add column if not exists google_event_id text;
+alter table if exists bookings add column if not exists google_event_link text;
+alter table if exists bookings add column if not exists calendar_sync_status text default 'pending';
+alter table if exists bookings add column if not exists calendar_sync_error text;
+
+do $$
+begin
+  alter table bookings
+    add constraint bookings_calendar_sync_status_check
+    check (calendar_sync_status in ('pending','synced','error','skipped'));
+exception
+  when duplicate_object then null;
+end $$;
+
 create index if not exists idx_bookings_date on bookings(appointment_at);
 create index if not exists idx_bookings_status on bookings(status);
+create index if not exists idx_bookings_google_event_id on bookings(google_event_id);
+create index if not exists idx_bookings_calendar_sync_status on bookings(calendar_sync_status);
 
 -- Row Level Security
 alter table services enable row level security;
