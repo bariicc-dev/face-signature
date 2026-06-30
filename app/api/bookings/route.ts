@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase-server';
 import { sendBookingEmails } from '@/lib/email';
+import { createCalendarEventForBooking } from '@/lib/google-calendar';
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ce créneau vient d\'être pris. Veuillez en choisir un autre.' }, { status: 409 });
     }
 
-    // Insert booking
+    // Insert booking first. Calendar/email failures must never erase the booking.
     const { data: booking, error: insErr } = await sb.from('bookings').insert({
       service_id: serviceId,
       client_name: name,
@@ -56,11 +57,27 @@ export async function POST(req: NextRequest) {
       notes: notes || null,
       status: 'pending',
       is_new: true,
+      calendar_sync_status: 'pending',
     }).select().single();
 
     if (insErr || !booking) {
       console.error(insErr);
       return NextResponse.json({ error: 'Erreur lors de la création' }, { status: 500 });
+    }
+
+    const calendarSync = await createCalendarEventForBooking(booking, svc);
+    const { error: calendarUpdateErr } = await sb
+      .from('bookings')
+      .update({
+        calendar_sync_status: calendarSync.status,
+        google_event_id: calendarSync.eventId || null,
+        google_event_link: calendarSync.eventLink || null,
+        calendar_sync_error: calendarSync.error || null,
+      })
+      .eq('id', booking.id);
+
+    if (calendarUpdateErr) {
+      console.error('Calendar sync metadata update failed:', calendarUpdateErr);
     }
 
     // Send emails (don't block on failure)
@@ -75,9 +92,19 @@ export async function POST(req: NextRequest) {
       duration: svc.duration,
       total: svc.price,
       notes,
+      calendarSyncStatus: calendarSync.status,
+      calendarEventLink: calendarSync.eventLink,
+      calendarSyncError: calendarSync.error,
     }).catch(e => console.error('Email send failed:', e));
 
-    return NextResponse.json({ id: booking.id, ok: true });
+    return NextResponse.json({
+      id: booking.id,
+      ok: true,
+      calendar: {
+        status: calendarSync.status,
+        eventLink: calendarSync.eventLink || null,
+      },
+    });
   } catch (e: any) {
     console.error(e);
     return NextResponse.json({ error: e.message || 'Erreur serveur' }, { status: 500 });
