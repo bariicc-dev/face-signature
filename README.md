@@ -125,6 +125,31 @@ GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END P
 
 ---
 
+## Admin mobile
+
+L'espace `/admin` est organise comme une petite app mobile avec 5 onglets :
+
+- `Aujourd'hui` : RDV du jour, actions rapides, CA du mois.
+- `Agenda` : vues jour, semaine et mois, avec RDV groupes par date.
+- `Ajouter` : creation manuelle d'un RDV telephone/DM.
+- `Clients` : recherche simple derivee des anciens RDV.
+- `Stats` : CA et volumes par mois.
+
+Les RDV manuels utilisent la meme table `bookings` que le booking public. Aucun paiement n'est gere. Le prix et la duree viennent du soin choisi, mais restent modifiables pour un cas particulier.
+
+Par defaut, un RDV manuel est `confirmed` et n'envoie pas d'email. La case "Envoyer une confirmation a la cliente" envoie seulement l'email cliente si une adresse email est presente. L'email admin n'est pas envoye pour les RDV manuels afin d'eviter le spam.
+
+Le formulaire manuel recherche les clientes existantes dans les anciens RDV par nom, telephone ou email. Il n'y a pas de table `clients` separee : les fiches clientes sont derivees des reservations existantes pour garder le projet simple.
+
+### Calcul CA
+
+- `CA realise` : RDV `completed`, plus RDV `confirmed` dont la date est deja passee.
+- `CA prevu` : RDV futurs `pending` ou `confirmed`.
+- Les RDV `cancelled` ne sont jamais comptes dans le CA.
+- Le prix personnalise d'un RDV manuel est stocke dans `bookings.total` et compte donc dans les stats.
+
+---
+
 ## Lancer en local
 
 ```bash
@@ -159,7 +184,11 @@ Pages utiles :
 11. Vérifie l'email cliente.
 12. Vérifie l'email admin, avec le statut agenda.
 13. Ouvre `/admin`, connecte-toi, vérifie le RDV et le badge agenda.
-14. Confirme puis annule un RDV depuis l'admin pour vérifier les actions existantes.
+14. Ouvre l'onglet `Agenda` et vérifie que le RDV apparait.
+15. Ouvre l'onglet `Ajouter`, cree un RDV manuel et verifie qu'il apparait dans Aujourd'hui/Agenda/Clients/Stats.
+16. Tente un RDV manuel sur un creneau deja occupe et verifie le message de conflit.
+17. Marque un RDV `Termine` et verifie qu'il entre dans le CA realise.
+18. Annule un RDV et verifie qu'il ne compte pas dans le CA.
 
 Si `calendar_sync_status=error`, consulte **Vercel → Project → Logs**. Le RDV et les emails restent indépendants de l'échec agenda.
 
@@ -203,7 +232,8 @@ Pour ajouter un soin, insère une ligne dans `services` avec un `id` unique, une
 
 ```text
 face-signature/
-├── app/api/bookings/route.ts   # Création booking + sync agenda + emails
+├── app/api/bookings/route.ts   # Creation booking public + sync agenda + emails
+├── app/api/admin/bookings/route.ts # Creation RDV manuel admin
 ├── app/book/                   # Flow réservation public
 ├── app/admin/                  # Dashboard admin
 ├── lib/email.ts                # Templates Resend
