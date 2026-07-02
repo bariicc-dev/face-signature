@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase-server';
 import { sendBookingEmails } from '@/lib/email';
+import { getOfficialService, serviceUpsertPayload } from '@/lib/services';
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,8 +15,13 @@ export async function POST(req: NextRequest) {
     const sb = createAdminClient();
 
     // Load service to get price & duration
-    const { data: svc, error: svcErr } = await sb.from('services').select('*').eq('id', serviceId).single();
-    if (svcErr || !svc) {
+    const officialService = getOfficialService(serviceId);
+    const { data: dbSvc } = await sb.from('services').select('*').eq('id', serviceId).maybeSingle();
+    const svc = officialService ? { ...dbSvc, ...officialService } : dbSvc;
+    if (officialService) {
+      await sb.from('services').upsert(serviceUpsertPayload(officialService), { onConflict: 'id' });
+    }
+    if (!svc) {
       return NextResponse.json({ error: 'Soin introuvable' }, { status: 404 });
     }
 

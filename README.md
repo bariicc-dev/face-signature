@@ -1,225 +1,119 @@
-# Face Signature — Plateforme complète
+# Face Signature
 
-Site vitrine + réservations + admin mobile-first.
-Vraies emails, vraie base de données, déployable gratuitement.
+Site vitrine, reservation publique et app admin mobile-first pour Face Signature.
 
----
+## Fonctionnalites
 
-## 🎯 Ce que tu obtiens
+- Pages publiques : accueil, tarifs, reservation, confirmation, adresse.
+- Reservations stockees dans Supabase.
+- Anti-double-booking sur les reservations publiques et les RDV manuels admin.
+- Emails Resend pour les reservations publiques.
+- App admin protegee par Supabase Auth.
+- Agenda admin avec vues jour/semaine, blocs RDV par heure, actions et reprogrammation.
+- Ajout manuel de RDV pour les clientes par telephone ou DM.
+- Recherche cliente simple derivee de l'historique des bookings.
+- Stats mensuelles avec CA realise, CA prevu, RDV termines, annules et ticket moyen.
 
-- **Site public** : accueil, tarifs, réservation, adresse
-- **Système de réservation** : avec calendrier, anti-double-booking
-- **Emails automatiques** : à la cliente + à Mariam à chaque résa
-- **Admin séparé** sur `/admin` : protégé par login, mobile-first
-- **App installable** sur l'iPhone de Mariam (PWA, "Ajouter à l'écran d'accueil")
-- **Notifications temps réel** dans l'admin quand quelqu'un réserve
+## Variables d'environnement
 
----
+Copier `.env.local.example` vers `.env.local`, puis ajouter les memes valeurs dans Vercel.
 
-## 🚀 Déploiement (30 minutes la première fois)
-
-Tu vas avoir besoin de **3 comptes gratuits** :
-
-| Service | À quoi ça sert | Lien |
-|---|---|---|
-| **Vercel** | Hébergement du site | [vercel.com](https://vercel.com) |
-| **Supabase** | Base de données + login admin | [supabase.com](https://supabase.com) |
-| **Resend** | Envoi d'emails | [resend.com](https://resend.com) |
-
-Tous gratuits, plans suffisants pour Face Signature toute l'année.
-
----
-
-### Étape 1 — Supabase (base de données)
-
-1. Va sur [supabase.com](https://supabase.com) → **New project**
-2. Nom : `face-signature` · choisis un mot de passe DB (note-le)
-3. Région : **West EU (Paris/Frankfurt)** pour la rapidité
-4. Une fois le projet créé, va dans **SQL Editor** (icône `</>`) → **New Query**
-5. Ouvre le fichier `supabase-schema.sql` de ce projet, copie-colle tout, clique **Run** ✅
-6. Va dans **Authentication → Users → Add user → Create new user**
-   - Email : celui de Mariam (ex: `mariam@facesignature.paris`)
-   - Mot de passe : choisis-en un solide, donne-le à Mariam
-   - ✅ Auto Confirm User
-7. Va dans **Project Settings → API** et note 3 valeurs :
-   - `Project URL` → `https://xxx.supabase.co`
-   - `anon public` (clé)
-   - `service_role` (clé secrète — garde-la secrète)
-
----
-
-### Étape 2 — Resend (envoi des emails)
-
-1. Va sur [resend.com](https://resend.com) → crée un compte
-2. **API Keys → Create API Key** → nom `face-signature` → copie la clé (`re_...`)
-3. Pour les emails de test, tu peux utiliser `onboarding@resend.dev` comme expéditeur
-4. **Pour la production**, ajoute le domaine (ex: `facesignature.paris`) dans **Domains → Add Domain** et suis les instructions DNS. Sinon Resend n'enverra qu'à toi-même en mode test.
-
----
-
-### Étape 3 — Vercel (déploiement)
-
-#### A. Mets le projet sur GitHub
-
-```bash
-cd face-signature
-git init
-git add .
-git commit -m "initial"
-# crée un repo sur github.com puis :
-git remote add origin https://github.com/TOI/face-signature.git
-git push -u origin main
-```
-
-#### B. Déploie sur Vercel
-
-1. Va sur [vercel.com](https://vercel.com) → **Add New → Project**
-2. Import le repo GitHub `face-signature`
-3. Avant de cliquer **Deploy**, ouvre **Environment Variables** et ajoute :
-
-| Nom | Valeur |
+| Nom | Usage |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | l'URL du projet Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | la clé `anon public` |
-| `SUPABASE_SERVICE_ROLE_KEY` | la clé `service_role` |
-| `RESEND_API_KEY` | la clé Resend (`re_...`) |
-| `ADMIN_EMAIL` | email de Mariam où les notifs arrivent |
-| `FROM_EMAIL` | `onboarding@resend.dev` (ou ton domaine vérifié) |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Cle publique Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Cle serveur Supabase, a garder secrete |
+| `RESEND_API_KEY` | Cle API Resend |
+| `ADMIN_EMAIL` | Email qui recoit les notifications admin |
+| `FROM_EMAIL` | Email expediteur Resend, idealement domaine verifie |
 
-4. Clique **Deploy**. Attends 1-2 min. ✨
+Ne pas commiter `.env.local`.
 
-Tu reçois une URL `face-signature-xxx.vercel.app`. Si t'achètes un domaine après (genre `facesignature.paris` ~10€/an), tu le branches en 30 secondes dans Vercel.
+## Supabase
 
----
+1. Creer un projet Supabase.
+2. Ouvrir **SQL Editor**.
+3. Executer `supabase-schema.sql`.
+4. Creer un utilisateur admin dans **Authentication > Users**.
+5. Recuperer les cles dans **Project Settings > API**.
 
-## 📱 Pour Mariam : installer l'admin sur l'iPhone
+Aucune table clients separee n'est requise : l'admin derive les fiches clientes depuis les lignes `bookings`.
 
-Une fois déployé, envoie-lui ce message :
+## Resend
 
-> Hello, voici ton espace admin Face Signature 💛
->
-> 1. Ouvre ce lien sur ton iPhone avec **Safari** : `https://face-signature.vercel.app/admin/login`
-> 2. Connecte-toi avec ton email et le mot de passe
-> 3. Une fois connectée, tape sur l'icône **Partager** (carré avec flèche) → **Sur l'écran d'accueil**
-> 4. Ça crée une icône Face Signature comme une vraie app
->
-> À partir de là, tu lances l'app comme Instagram, tu vois toutes les résa en temps réel, tu confirmes / appelles / WhatsApp tes clientes en un tap.
+1. Creer une cle API dans Resend.
+2. Renseigner `RESEND_API_KEY`.
+3. En production, verifier le domaine d'envoi et utiliser ce domaine dans `FROM_EMAIL`.
 
----
+Les RDV manuels n'envoient pas d'email par defaut. L'admin peut cocher l'envoi d'une confirmation cliente si une adresse email est renseignee.
 
-## 🏃 Lancer en local (pour développer)
+## Admin mobile
+
+L'espace `/admin` est organise comme une app mobile :
+
+- `Aujourd'hui` : priorite du jour, CA rapide, actions.
+- `Agenda` : vues jour/semaine avec blocs horaires.
+- `Ajouter` : creation manuelle d'un RDV.
+- `Clients` : recherche dans l'historique client.
+- `Stats` : CA et volume mensuel.
+
+Actions disponibles :
+
+- confirmer un RDV,
+- annuler un RDV,
+- marquer termine,
+- reprogrammer avec verification de conflit,
+- supprimer uniquement via confirmation.
+
+La suppression est volontairement secondaire. Pour garder l'historique et des stats fiables, il vaut mieux annuler un RDV que le supprimer.
+
+## Calcul du CA
+
+- `CA realise` : RDV `completed`, plus RDV `confirmed` dont la date est deja passee.
+- `CA prevu` : RDV futurs en `pending` ou `confirmed`.
+- Les RDV `cancelled` ne comptent jamais dans le CA.
+- Les prix personnalises des RDV manuels sont stockes dans `bookings.total` et comptent dans les stats.
+
+## Lancer en local
 
 ```bash
-cd face-signature
-cp .env.local.example .env.local
-# remplis .env.local avec tes vraies clés
 npm install
 npm run dev
-# ouvre http://localhost:3000
 ```
 
-Pages disponibles :
-- `/` accueil
-- `/prices` tarifs
-- `/book` réservation
-- `/location` adresse
-- `/admin/login` login admin
-- `/admin` dashboard (protégé)
+Pages principales :
 
----
+- `/`
+- `/prices`
+- `/book`
+- `/confirm`
+- `/location`
+- `/admin/login`
+- `/admin`
 
-## 🛠️ Modifier les tarifs
+## Verification avant livraison
 
-Va dans Supabase → **Table Editor → services** → modifie directement. Aucun redéploiement nécessaire.
+1. Lancer `npm run build`.
+2. Ouvrir `/prices` et verifier les tarifs.
+3. Ouvrir `/book` et creer une reservation publique.
+4. Verifier que la reservation apparait dans `/admin`.
+5. Ouvrir `Agenda` et verifier le bloc horaire du RDV.
+6. Creer un RDV manuel depuis `Ajouter`.
+7. Tester la recherche/autofill cliente.
+8. Tester un conflit de creneau.
+9. Marquer un RDV termine et verifier le CA realise.
+10. Annuler un RDV et verifier qu'il ne compte pas dans le CA.
 
-Pour ajouter un nouveau soin :
-- **Insert row** dans la table `services`
-- Remplis `id` (court, unique, ex: `lip1`), `category`, `name`, `price`, `duration` (en minutes)
-- Le site le récupère automatiquement
+## Structure
 
----
-
-## 🔧 Comment ça marche
-
+```text
+app/
+  api/bookings/route.ts        reservation publique
+  api/admin/bookings/route.ts  creation, reprogrammation et suppression admin
+  admin/                       app admin
+  book/                        flow public de reservation
+components/                    navigation, footer, icones
+lib/                           Supabase et emails
+public/                        assets PWA
+supabase-schema.sql            schema de base
 ```
-                    ┌──────────────┐
-                    │   CLIENTE    │
-                    │  (mobile)    │
-                    └──────┬───────┘
-                           │ réserve sur /book
-                           ▼
-              ┌──────────────────────────┐
-              │  Next.js sur VERCEL      │
-              │  /api/bookings (POST)    │
-              └──────┬───────────────────┘
-                     │
-            ┌────────┴────────┐
-            ▼                 ▼
-    ┌──────────────┐    ┌──────────────┐
-    │  SUPABASE    │    │   RESEND     │
-    │  (database)  │    │  (emails)    │
-    └──────┬───────┘    └──────┬───────┘
-           │                   │
-           │ realtime          │ envoie 2 emails
-           │ push              │
-           ▼                   ▼
-    ┌──────────────┐    ┌──────────────┐
-    │  ADMIN       │    │ CLIENTE      │
-    │  (Mariam)    │    │ + ADMIN      │
-    │  /admin      │    │ (boîte mail) │
-    └──────────────┘    └──────────────┘
-```
-
----
-
-## ❓ FAQ
-
-**Combien ça coûte ?**
-Zéro. Tant que tu restes sous : 500MB DB Supabase, 100 emails/jour Resend (3000/mois), trafic Vercel raisonnable (gratuit jusqu'à 100GB/mois).
-
-**Et si je dépasse ?**
-Tu te poses la question quand tu auras 100 résa par jour. Pour l'instant, t'es très très large.
-
-**Comment changer le mot de passe admin ?**
-Supabase → Authentication → Users → clique sur Mariam → Send password recovery (un lien lui est envoyé).
-
-**Comment ajouter une autre personne admin ?**
-Supabase → Authentication → Users → Add user. Tout user connecté a accès à `/admin`.
-
-**Les emails partent vraiment ?**
-Oui, dès que tu ajoutes la clé Resend dans Vercel. Vérifie ton dashboard Resend pour voir les envois.
-
-**Comment voir les logs si quelque chose foire ?**
-Vercel → ton projet → Logs. Tu verras chaque appel API en temps réel.
-
----
-
-## 📁 Structure du projet
-
-```
-face-signature/
-├── app/
-│   ├── page.tsx              # Accueil
-│   ├── prices/page.tsx       # Tarifs
-│   ├── book/                 # Réservation
-│   ├── confirm/page.tsx      # Confirmation post-réservation
-│   ├── location/page.tsx     # Adresse
-│   ├── admin/                # Espace admin (protégé)
-│   │   ├── page.tsx
-│   │   ├── AdminDashboard.tsx
-│   │   ├── login/page.tsx
-│   │   └── layout.tsx
-│   └── api/bookings/route.ts # API : crée résa + envoie emails
-├── components/               # Composants partagés
-├── lib/
-│   ├── supabase-browser.ts   # Client DB côté navigateur
-│   ├── supabase-server.ts    # Client DB côté serveur
-│   └── email.ts              # Templates + envoi Resend
-├── public/                   # Icônes, manifest PWA
-├── supabase-schema.sql       # Script de création BD
-└── README.md                 # Ce fichier
-```
-
----
-
-Made with ❤️ for Face Signature.

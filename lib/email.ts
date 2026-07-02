@@ -46,6 +46,8 @@ export async function sendBookingEmails(booking: {
   duration: number;
   total: number;
   notes?: string | null;
+  sendClientEmail?: boolean;
+  sendAdminEmail?: boolean;
 }) {
   const d = new Date(booking.appointmentAt);
   const dateStr = formatDateFr(d);
@@ -133,23 +135,40 @@ export async function sendBookingEmails(booking: {
   `
   );
 
-  // Send both
-  try {
-    await Promise.all([
+  const sendClientEmail = booking.sendClientEmail ?? true;
+  const sendAdminEmail = booking.sendAdminEmail ?? true;
+  const sends = [];
+
+  if (sendClientEmail && booking.clientEmail) {
+    sends.push(
       resend.emails.send({
         from: `Face Signature <${FROM}>`,
         to: booking.clientEmail,
         subject: `Votre rendez-vous chez Face Signature — ${dateStr}`,
         html: clientHtml,
-      }),
+      })
+    );
+  }
+
+  if (sendAdminEmail) {
+    sends.push(
       resend.emails.send({
         from: `Face Signature <${FROM}>`,
         to: ADMIN,
         subject: `🌸 Nouvelle réservation — ${booking.clientName} (${dateStr})`,
         html: adminHtml,
-        replyTo: booking.clientEmail,
-      }),
-    ]);
+        replyTo: booking.clientEmail || undefined,
+      })
+    );
+  }
+
+  if (sends.length === 0) {
+    return { ok: true, skipped: true };
+  }
+
+  // Send selected notifications
+  try {
+    await Promise.all(sends);
     return { ok: true };
   } catch (e: any) {
     console.error('Email send failed:', e);

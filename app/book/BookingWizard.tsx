@@ -3,9 +3,13 @@ import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { Reveal } from '@/components/Reveal';
+import { formatServicePrice } from '@/lib/services';
 
-type Service = { id: string; name: string; category: string; price: number; duration: number; note?: string | null };
+type Service = { id: string; name: string; category: string; price: number; old_price?: number | null; duration: number; note?: string | null };
 type Busy = { appointment_at: string; duration: number; status: string };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STEP_LABELS = ['Soin', 'Date', 'Vos infos'];
 
 export function BookingWizard({ services, busy, preselectId }: { services: Service[]; busy: Busy[]; preselectId?: string }) {
   const router = useRouter();
@@ -20,6 +24,10 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
   const [error, setError] = useState<string | null>(null);
 
   const svc = services.find(s => s.id === data.serviceId);
+  const nameOk = data.name.trim().length > 1;
+  const emailOk = EMAIL_RE.test(data.email.trim());
+  const phoneOk = data.phone.replace(/\D/g, '').length >= 9;
+  const clientOk = nameOk && emailOk && phoneOk;
 
   const byCat = useMemo(() => {
     const m: Record<string, Service[]> = {};
@@ -46,8 +54,35 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
     if (h < 18) slots.push(`${String(h).padStart(2, '0')}:30`);
   }
 
+  const valid: Record<number, boolean> = {
+    1: !!data.serviceId,
+    2: !!data.date && !!data.time,
+    3: clientOk,
+  };
+
+  const chooseService = (serviceId: string) => {
+    setError(null);
+    setData(d => ({ ...d, serviceId, date: null, time: null }));
+    setStep(2);
+  };
+
+  const goNext = () => {
+    setError(null);
+    if (!valid[step]) return;
+    setStep(s => Math.min(3, s + 1));
+  };
+
   const submit = async () => {
-    if (!svc || !data.date || !data.time) return;
+    if (sending) return;
+    if (!svc || !data.date || !data.time) {
+      setError('Choisissez un soin, une date et un créneau avant de confirmer.');
+      return;
+    }
+    if (!clientOk) {
+      setError('Renseignez votre nom, un email valide et un téléphone.');
+      return;
+    }
+
     setSending(true);
     setError(null);
     const d = new Date(data.date);
@@ -61,56 +96,54 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
         body: JSON.stringify({
           serviceId: svc.id,
           appointmentAt: d.toISOString(),
-          name: data.name,
-          email: data.email,
-          phone: data.phone,
-          notes: data.notes,
+          name: data.name.trim(),
+          email: data.email.trim(),
+          phone: data.phone.trim(),
+          notes: data.notes.trim(),
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Erreur');
+      if (!res.ok) throw new Error(json.error || 'La réservation n\'a pas pu être envoyée. Réessayez dans un instant.');
       router.push(`/confirm?id=${json.id}`);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || 'Une erreur est survenue. Réessayez ou contactez l\'institut sur WhatsApp.');
       setSending(false);
     }
   };
 
-  const valid: Record<number, boolean> = {
-    1: !!data.serviceId,
-    2: !!data.date && !!data.time,
-    3: !!(data.name && data.email && data.phone),
-  };
-  const stepLabels = ['Soin', 'Date', 'Vos infos'];
-
   return (
     <div className="wizard">
-      <div className="steps">
-        {stepLabels.map((l, i) => (
-          <div key={i} className={'step ' + (step === i + 1 ? 'active' : '') + (step > i + 1 ? ' done' : '')}>
-            {step > i + 1 ? <Icon n="check" s={10} /> : i + 1}{l}
-          </div>
-        ))}
+      <div className="steps" aria-label="Étapes de réservation">
+        {STEP_LABELS.map((label, i) => {
+          const current = step === i + 1;
+          const done = step > i + 1;
+          return (
+            <div key={label} className={'step ' + (current ? 'active' : '') + (done ? ' done' : '')} aria-current={current ? 'step' : undefined}>
+              <span>{done ? <Icon n="check" s={10} /> : i + 1}</span>
+              <span>{label}</span>
+            </div>
+          );
+        })}
       </div>
 
       <Reveal>
         <div className="wiz-card">
           {step === 1 && (
             <>
-              <h2 className="wiz-h">Quel soin ?</h2>
-              <p className="wiz-sub">Choisissez votre prestation.</p>
+              <h2 className="wiz-h">Choisir le soin</h2>
+              <p className="wiz-sub">Sélectionnez la prestation souhaitée. Le choix s'ouvre ensuite sur les créneaux disponibles.</p>
               {Object.keys(byCat).map(cat => (
                 <div key={cat} style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 12, color: 'var(--gold)', letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 10, fontWeight: 500 }}>{cat}</div>
                   <div className="svc-list">
                     {byCat[cat].map(s => (
-                      <div key={s.id} className={'svc-row ' + (data.serviceId === s.id ? 'selected' : '')} onClick={() => setData(d => ({ ...d, serviceId: s.id }))}>
+                      <button key={s.id} type="button" className={'svc-row ' + (data.serviceId === s.id ? 'selected' : '')} aria-pressed={data.serviceId === s.id} onClick={() => chooseService(s.id)}>
                         <div className="svc-tx">
                           <div className="t">{s.name}</div>
-                          <div className="d">{s.duration} min{s.note ? ' · ' + s.note : ''}</div>
+                          <div className="d">{s.duration} min{s.note && !s.note.toLowerCase().startsWith('à partir') ? ' · ' + s.note : ''}</div>
                         </div>
-                        <div className="svc-pr">{s.price}€</div>
-                      </div>
+                        <div className="svc-pr">{formatServicePrice(s)}</div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -120,21 +153,34 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
 
           {step === 2 && (
             <>
-              <h2 className="wiz-h">Quand ?</h2>
-              <p className="wiz-sub">Choisissez une date puis un créneau disponible.</p>
+              <h2 className="wiz-h">Choisir le créneau</h2>
+              <p className="wiz-sub">Les créneaux déjà réservés sont grisés. Sélectionnez une date puis une heure disponible.</p>
+              {svc && (
+                <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, border: '1px solid var(--line)', borderRadius: 14, padding: '12px 14px', background: 'var(--bg-2)' }}>
+                  <div>
+                    <strong style={{ display: 'block', fontSize: 14 }}>{svc.name}</strong>
+                    <span style={{ display: 'block', color: 'var(--mute)', fontSize: 12, marginTop: 3 }}>{svc.duration} min</span>
+                  </div>
+                  <span style={{ color: 'var(--gold)', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatServicePrice(svc)}</span>
+                </div>
+              )}
               <Calendar value={data.date} onChange={d => setData(x => ({ ...x, date: d, time: null }))} />
               {data.date && (
-                <div className="slots">
+                <div className="slots" aria-label="Créneaux disponibles">
                   {slots.map(t => {
                     const booked = isSlotBooked(data.date!, t);
                     return (
-                      <div
+                      <button
                         key={t}
+                        type="button"
                         className={'slot ' + (data.time === t ? 'selected' : '') + (booked ? ' disabled' : '')}
-                        onClick={() => !booked && setData(d => ({ ...d, time: t }))}
+                        disabled={booked}
+                        aria-pressed={data.time === t}
+                        aria-label={booked ? `${t}, déjà réservé` : `${t}, disponible`}
+                        onClick={() => setData(d => ({ ...d, time: t }))}
                       >
                         {t}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -145,41 +191,47 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
           {step === 3 && (
             <>
               <h2 className="wiz-h">Vos coordonnées</h2>
-              <p className="wiz-sub">Vous recevrez un email de confirmation.</p>
+              <p className="wiz-sub">
+                {svc?.name} · {data.time} · {formatServicePrice(svc || { price: 0, note: null })}
+              </p>
               <div style={{ display: 'grid', gap: 14 }}>
-                <div className="field"><label>Nom complet</label><input className="input" value={data.name} onChange={e => setData(d => ({ ...d, name: e.target.value }))} placeholder="Votre nom" /></div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div className="field"><label>Email</label><input className="input" type="email" value={data.email} onChange={e => setData(d => ({ ...d, email: e.target.value }))} placeholder="vous@email.com" /></div>
-                  <div className="field"><label>Téléphone</label><input className="input" type="tel" value={data.phone} onChange={e => setData(d => ({ ...d, phone: e.target.value }))} placeholder="06 12 34 56 78" /></div>
+                <div className="field">
+                  <label htmlFor="booking-name">Nom complet *</label>
+                  <input id="booking-name" className="input" value={data.name} onChange={e => setData(d => ({ ...d, name: e.target.value }))} placeholder="Votre nom" autoComplete="name" required />
                 </div>
-                <div className="field"><label>Notes (optionnel)</label><textarea className="textarea" value={data.notes} onChange={e => setData(d => ({ ...d, notes: e.target.value }))} placeholder="Allergies, première visite..." /></div>
+                <div className="form-grid-2">
+                  <div className="field">
+                    <label htmlFor="booking-email">Email *</label>
+                    <input id="booking-email" className="input" type="email" value={data.email} onChange={e => setData(d => ({ ...d, email: e.target.value }))} placeholder="vous@email.com" autoComplete="email" required />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="booking-phone">Téléphone *</label>
+                    <input id="booking-phone" className="input" type="tel" value={data.phone} onChange={e => setData(d => ({ ...d, phone: e.target.value }))} placeholder="06 12 34 56 78" autoComplete="tel" required />
+                  </div>
+                </div>
+                <div className="field">
+                  <label htmlFor="booking-notes">Notes (optionnel)</label>
+                  <textarea id="booking-notes" className="textarea" value={data.notes} onChange={e => setData(d => ({ ...d, notes: e.target.value }))} placeholder="Allergies, première visite..." />
+                </div>
               </div>
-
-              <div className="summary" style={{ marginTop: 20 }}>
-                <div className="summary-row"><span className="l">Soin</span><span>{svc?.name}</span></div>
-                <div className="summary-row"><span className="l">Date</span><span style={{ textTransform: 'capitalize' }}>{new Date(data.date!).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
-                <div className="summary-row"><span className="l">Heure</span><span>{data.time}</span></div>
-                <div className="summary-row"><span className="l">Total à régler en institut</span><span style={{ color: 'var(--gold)', fontWeight: 500 }}>{svc?.price}€</span></div>
-              </div>
-              <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--bg-3)', borderRadius: 10, fontSize: 12.5, color: 'var(--mute)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Icon n="check" s={14} /> Aucun paiement maintenant. Vous réglez sur place.
-              </div>
-              {error && <div style={{ marginTop: 14, padding: 12, background: 'rgba(244,67,54,.1)', border: '1px solid #e57975', borderRadius: 10, color: '#e57975', fontSize: 13 }}>{error}</div>}
+              {error && <div aria-live="polite" style={{ marginTop: 14, padding: 12, background: 'rgba(244,67,54,.1)', border: '1px solid var(--danger)', borderRadius: 10, color: 'var(--danger)', fontSize: 13 }}>{error}</div>}
             </>
           )}
 
-          <div className="wiz-nav">
-            {step > 1 ? <button className="btn btn-ghost" onClick={() => setStep(s => s - 1)}><Icon n="arrowL" s={13} /> Retour</button> : <span />}
-            {step < 3 ? (
-              <button className="btn btn-primary" onClick={() => setStep(s => s + 1)} disabled={!valid[step]} style={{ opacity: valid[step] ? 1 : 0.4 }}>
-                Continuer <Icon n="arrow" s={13} />
-              </button>
-            ) : (
-              <button className="btn btn-gold" onClick={submit} disabled={!valid[3] || sending} style={{ opacity: valid[3] && !sending ? 1 : 0.4 }}>
-                {sending ? 'Envoi…' : 'Confirmer le rendez-vous'} <Icon n="check" s={13} />
-              </button>
-            )}
-          </div>
+          {step > 1 && (
+            <div className="wiz-nav">
+              <button type="button" className="btn btn-ghost" onClick={() => { setError(null); setStep(s => s - 1); }}><Icon n="arrowL" s={13} /> Retour</button>
+              {step < 3 ? (
+                <button type="button" className="btn btn-primary" onClick={goNext} disabled={!valid[step]} style={{ opacity: valid[step] ? 1 : 0.45 }}>
+                  Continuer <Icon n="arrow" s={13} />
+                </button>
+              ) : (
+                <button type="button" className="btn btn-gold" onClick={submit} disabled={!valid[3] || sending} style={{ opacity: valid[3] && !sending ? 1 : 0.45 }}>
+                  {sending ? 'Confirmation en cours...' : 'Confirmer le rendez-vous'} <Icon n="check" s={13} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </Reveal>
     </div>
@@ -200,9 +252,9 @@ function Calendar({ value, onChange }: { value: Date | null; onChange: (d: Date)
   return (
     <div>
       <div className="cal-head">
-        <button className="icon-btn" onClick={() => setView(new Date(y, m - 1, 1))}><Icon n="chevL" s={14} /></button>
+        <button type="button" className="icon-btn" onClick={() => setView(new Date(y, m - 1, 1))} aria-label="Mois précédent"><Icon n="chevL" s={14} /></button>
         <div className="cal-title">{view.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</div>
-        <button className="icon-btn" onClick={() => setView(new Date(y, m + 1, 1))}><Icon n="chev" s={14} /></button>
+        <button type="button" className="icon-btn" onClick={() => setView(new Date(y, m + 1, 1))} aria-label="Mois suivant"><Icon n="chev" s={14} /></button>
       </div>
       <div className="cal-grid">
         {dow.map(d => <div key={d} className="cal-dow">{d}</div>)}
@@ -211,14 +263,19 @@ function Calendar({ value, onChange }: { value: Date | null; onChange: (d: Date)
           const past = d < today;
           const sel = value && new Date(value).toDateString() === d.toDateString();
           const isToday = d.toDateString() === new Date().toDateString();
+          const label = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
           return (
-            <div
+            <button
+              type="button"
               key={i}
               className={'cal-day ' + (past ? 'disabled' : '') + (sel ? ' selected' : '') + (isToday ? ' today' : '')}
-              onClick={() => !past && onChange(d)}
+              disabled={past}
+              aria-pressed={!!sel}
+              aria-label={label}
+              onClick={() => onChange(d)}
             >
               {d.getDate()}
-            </div>
+            </button>
           );
         })}
       </div>

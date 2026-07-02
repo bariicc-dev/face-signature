@@ -63,25 +63,26 @@ create policy "bookings_delete_auth" on bookings for delete using (auth.role() =
 -- ============================================================
 insert into services (id, category, name, price, old_price, duration, note, sort_order) values
   -- Sourcils
-  ('mb1','Sourcils','Microshading',90,180,90,null,1),
+  ('mb1','Sourcils','Microshading',99,180,90,null,1),
   ('mb2','Sourcils','Microblading',120,220,120,null,2),
   ('mb3','Sourcils','Powder Brow',120,220,120,null,3),
-  ('mb4','Sourcils','Mixte (Microblading + Shading)',120,220,120,null,4),
-  ('mb5','Sourcils','Détatouage sourcils',80,null,60,'à partir de 80€',5),
-  ('mb6','Sourcils','Reprise (correction)',120,null,90,null,6),
-  ('mb7','Sourcils','Retouche 1 mois',70,null,60,'anesthésie +10€',7),
-  ('mb8','Sourcils','Retouche 3 mois',80,null,60,'anesthésie +10€',8),
-  ('mb9','Sourcils','Retouche 6 mois',90,null,60,'anesthésie +10€',9),
-  ('mb10','Sourcils','Retouche 1 an',100,null,60,'anesthésie +10€',10),
+  ('mb4','Sourcils','Brow Lift',50,null,45,null,4),
+  ('mb5','Sourcils','Détatouage sourcils',50,null,60,'à partir de 50€',5),
+  ('mb6','Sourcils','Reprise (correction)',140,null,90,null,6),
+  ('mb7','Sourcils','Retouche sourcils 1 mois',70,null,60,null,7),
+  ('mb8','Sourcils','Retouche sourcils 3 mois',80,null,60,null,8),
+  ('mb9','Sourcils','Retouche sourcils 6 mois',90,null,60,null,9),
+  ('mb10','Sourcils','Retouche sourcils 1 an',100,null,60,null,10),
+  ('mb11','Sourcils','Anesthésie',10,null,15,null,11),
   -- Candelips & Eyeliner
-  ('cl1','Candelips & Eyeliner','Candelips',160,250,120,null,11),
-  ('cl2','Candelips & Eyeliner','Retouche Candelips (1 mois)',80,120,60,null,12),
-  ('cl3','Candelips & Eyeliner','Eyeliner',150,230,90,null,13),
-  ('cl4','Candelips & Eyeliner','Retouche Eyeliner',70,null,60,null,14),
+  ('cl1','Candelips & Eyeliner','Candelips',160,250,120,null,12),
+  ('cl2','Candelips & Eyeliner','Retouche Candelips 1 mois',80,120,60,null,13),
+  ('cl3','Candelips & Eyeliner','Eyeliner',150,230,90,null,14),
+  ('cl4','Candelips & Eyeliner','Retouche Eyeliner',70,null,60,null,15),
   -- Cils & Dents
-  ('cd1','Cils & Dents','Extension de cils',50,null,90,'à partir de 50€',15),
-  ('cd2','Cils & Dents','Blanchiment dents',70,150,45,null,16),
-  ('cd3','Cils & Dents','Effets volume',70,null,75,null,17)
+  ('cd1','Cils & Dents','Extension de cils',50,null,90,'à partir de 50€',16),
+  ('cd3','Cils & Dents','Effets volume russe',70,null,75,null,17),
+  ('cd2','Cils & Dents','Blanchiment dents',70,150,45,null,18)
 on conflict (id) do update set
   category = excluded.category,
   name = excluded.name,
