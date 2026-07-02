@@ -41,7 +41,7 @@ export default function AdminLogin() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
             <div className="field">
               <label>Email</label>
-              <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="mariam@facesignature.paris" autoComplete="email" required />
+              <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email admin" autoComplete="email" required />
             </div>
             <div className="field">
               <label>Mot de passe</label>
