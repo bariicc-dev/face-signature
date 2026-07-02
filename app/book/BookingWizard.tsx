@@ -3,8 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/Icon';
 import { Reveal } from '@/components/Reveal';
+import { formatServicePrice } from '@/lib/services';
 
-type Service = { id: string; name: string; category: string; price: number; duration: number; note?: string | null };
+type Service = { id: string; name: string; category: string; price: number; old_price?: number | null; duration: number; note?: string | null };
 type Busy = { appointment_at: string; duration: number; status: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -57,6 +58,12 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
     1: !!data.serviceId,
     2: !!data.date && !!data.time,
     3: clientOk,
+  };
+
+  const chooseService = (serviceId: string) => {
+    setError(null);
+    setData(d => ({ ...d, serviceId, date: null, time: null }));
+    setStep(2);
   };
 
   const goNext = () => {
@@ -124,18 +131,18 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
           {step === 1 && (
             <>
               <h2 className="wiz-h">Choisir le soin</h2>
-              <p className="wiz-sub">Sélectionnez la prestation souhaitée. Le prix et la durée restent visibles avant confirmation.</p>
+              <p className="wiz-sub">Sélectionnez la prestation souhaitée. Le choix s'ouvre ensuite sur les créneaux disponibles.</p>
               {Object.keys(byCat).map(cat => (
                 <div key={cat} style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 12, color: 'var(--gold)', letterSpacing: '.12em', textTransform: 'uppercase', marginBottom: 10, fontWeight: 500 }}>{cat}</div>
                   <div className="svc-list">
                     {byCat[cat].map(s => (
-                      <button key={s.id} type="button" className={'svc-row ' + (data.serviceId === s.id ? 'selected' : '')} aria-pressed={data.serviceId === s.id} onClick={() => setData(d => ({ ...d, serviceId: s.id }))}>
+                      <button key={s.id} type="button" className={'svc-row ' + (data.serviceId === s.id ? 'selected' : '')} aria-pressed={data.serviceId === s.id} onClick={() => chooseService(s.id)}>
                         <div className="svc-tx">
                           <div className="t">{s.name}</div>
-                          <div className="d">{s.duration} min{s.note ? ' · ' + s.note : ''}</div>
+                          <div className="d">{s.duration} min{s.note && !s.note.toLowerCase().startsWith('à partir') ? ' · ' + s.note : ''}</div>
                         </div>
-                        <div className="svc-pr">{s.price}€</div>
+                        <div className="svc-pr">{formatServicePrice(s)}</div>
                       </button>
                     ))}
                   </div>
@@ -149,9 +156,12 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
               <h2 className="wiz-h">Choisir le créneau</h2>
               <p className="wiz-sub">Les créneaux déjà réservés sont grisés. Sélectionnez une date puis une heure disponible.</p>
               {svc && (
-                <div className="summary" style={{ marginTop: 0, marginBottom: 18 }}>
-                  <div className="summary-row"><span className="l">Soin sélectionné</span><span>{svc.name}</span></div>
-                  <div className="summary-row"><span className="l">Durée</span><span>{svc.duration} min</span></div>
+                <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, border: '1px solid var(--line)', borderRadius: 14, padding: '12px 14px', background: 'var(--bg-2)' }}>
+                  <div>
+                    <strong style={{ display: 'block', fontSize: 14 }}>{svc.name}</strong>
+                    <span style={{ display: 'block', color: 'var(--mute)', fontSize: 12, marginTop: 3 }}>{svc.duration} min</span>
+                  </div>
+                  <span style={{ color: 'var(--gold)', fontWeight: 700, whiteSpace: 'nowrap' }}>{formatServicePrice(svc)}</span>
                 </div>
               )}
               <Calendar value={data.date} onChange={d => setData(x => ({ ...x, date: d, time: null }))} />
@@ -181,7 +191,9 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
           {step === 3 && (
             <>
               <h2 className="wiz-h">Vos coordonnées</h2>
-              <p className="wiz-sub">Un email de confirmation vous sera envoyé après la demande.</p>
+              <p className="wiz-sub">
+                {svc?.name} · {data.time} · {formatServicePrice(svc || { price: 0, note: null })}
+              </p>
               <div style={{ display: 'grid', gap: 14 }}>
                 <div className="field">
                   <label htmlFor="booking-name">Nom complet *</label>
@@ -202,35 +214,24 @@ export function BookingWizard({ services, busy, preselectId }: { services: Servi
                   <textarea id="booking-notes" className="textarea" value={data.notes} onChange={e => setData(d => ({ ...d, notes: e.target.value }))} placeholder="Allergies, première visite..." />
                 </div>
               </div>
-
-              <div className="summary" style={{ marginTop: 20 }}>
-                <div className="summary-row"><span className="l">Soin</span><span>{svc?.name}</span></div>
-                <div className="summary-row"><span className="l">Date</span><span style={{ textTransform: 'capitalize' }}>{new Date(data.date!).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
-                <div className="summary-row"><span className="l">Heure</span><span>{data.time}</span></div>
-                <div className="summary-row"><span className="l">Total à régler en institut</span><span style={{ color: 'var(--gold)', fontWeight: 500 }}>{svc?.price}€</span></div>
-              </div>
-
-              <div className="microcopy-grid">
-                <div className="microcopy-item"><Icon n="check" s={14} /> Aucun paiement maintenant</div>
-                <div className="microcopy-item"><Icon n="mail" s={14} /> Vous recevrez un email de confirmation</div>
-                <div className="microcopy-item"><Icon n="phone" s={14} /> L'institut vous contactera si besoin</div>
-              </div>
               {error && <div aria-live="polite" style={{ marginTop: 14, padding: 12, background: 'rgba(244,67,54,.1)', border: '1px solid var(--danger)', borderRadius: 10, color: 'var(--danger)', fontSize: 13 }}>{error}</div>}
             </>
           )}
 
-          <div className="wiz-nav">
-            {step > 1 ? <button type="button" className="btn btn-ghost" onClick={() => { setError(null); setStep(s => s - 1); }}><Icon n="arrowL" s={13} /> Retour</button> : <span />}
-            {step < 3 ? (
-              <button type="button" className="btn btn-primary" onClick={goNext} disabled={!valid[step]} style={{ opacity: valid[step] ? 1 : 0.45 }}>
-                Continuer <Icon n="arrow" s={13} />
-              </button>
-            ) : (
-              <button type="button" className="btn btn-gold" onClick={submit} disabled={!valid[3] || sending} style={{ opacity: valid[3] && !sending ? 1 : 0.45 }}>
-                {sending ? 'Confirmation en cours...' : 'Confirmer le rendez-vous'} <Icon n="check" s={13} />
-              </button>
-            )}
-          </div>
+          {step > 1 && (
+            <div className="wiz-nav">
+              <button type="button" className="btn btn-ghost" onClick={() => { setError(null); setStep(s => s - 1); }}><Icon n="arrowL" s={13} /> Retour</button>
+              {step < 3 ? (
+                <button type="button" className="btn btn-primary" onClick={goNext} disabled={!valid[step]} style={{ opacity: valid[step] ? 1 : 0.45 }}>
+                  Continuer <Icon n="arrow" s={13} />
+                </button>
+              ) : (
+                <button type="button" className="btn btn-gold" onClick={submit} disabled={!valid[3] || sending} style={{ opacity: valid[3] && !sending ? 1 : 0.45 }}>
+                  {sending ? 'Confirmation en cours...' : 'Confirmer le rendez-vous'} <Icon n="check" s={13} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </Reveal>
     </div>

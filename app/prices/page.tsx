@@ -5,6 +5,7 @@ import { Footer } from '@/components/Footer';
 import { FabWA } from '@/components/FabWA';
 import { Reveal } from '@/components/Reveal';
 import { createClient } from '@/lib/supabase-server';
+import { formatServicePrice, getDisplayServices } from '@/lib/services';
 
 type Service = {
   id: string;
@@ -20,7 +21,7 @@ export default async function PricesPage() {
   const sb = createClient();
   const { data: services } = await sb.from('services').select('*').eq('active', true).order('sort_order');
   const byCat: Record<string, Service[]> = {};
-  (services || []).forEach((s: Service) => {
+  getDisplayServices(services).forEach((s: Service) => {
     if (!byCat[s.category]) byCat[s.category] = [];
     byCat[s.category].push(s);
   });
@@ -52,11 +53,11 @@ export default async function PricesPage() {
                     <Link key={s.id} href={`/book?service=${s.id}`} className="price-row" aria-label={`Réserver ${s.name}`}>
                       <div>
                         <span className="price-name">{s.name}</span>
-                        {s.note && <small className="price-note">{s.note}</small>}
+                        {s.note && !s.note.toLowerCase().startsWith('à partir') && <small className="price-note">{s.note}</small>}
                       </div>
                       <span className="price-duration">{s.duration ? `${s.duration} min` : 'Durée à confirmer'}</span>
                       <span>{s.old_price ? <span className="old-price">{s.old_price}€</span> : null}</span>
-                      <span className="new-price">{s.price}€</span>
+                      <span className="new-price">{formatServicePrice(s)}</span>
                       <span className="book-label">Réserver</span>
                     </Link>
                   ))}

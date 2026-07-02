@@ -5,6 +5,7 @@ import { Footer } from '@/components/Footer';
 import { FabWA } from '@/components/FabWA';
 import { createClient } from '@/lib/supabase-server';
 import { Reveal } from '@/components/Reveal';
+import { formatServicePrice, getDisplayServices } from '@/lib/services';
 
 const HERO_IMAGE = {
   src: 'https://images.unsplash.com/photo-1616394584738-fc6e612e71b9?auto=format&fit=crop&w=1100&q=82',
@@ -12,17 +13,10 @@ const HERO_IMAGE = {
 };
 
 const MAIN_SERVICES = ['Sourcils', 'Candelips', 'Eyeliner', 'Cils', 'Blanchiment'];
-const TRUST_ITEMS = [
-  { title: 'Aucun paiement en ligne', text: 'La réservation se confirme, le règlement se fait à l\'institut.' },
-  { title: 'Confirmation par email', text: 'La cliente reçoit son récapitulatif après la demande.' },
-  { title: 'Paris 12e', text: '152 Rue de Charenton, accessible et facile à retrouver.' },
-  { title: 'WhatsApp direct', text: 'Une question avant de réserver ? Réponse simple et rapide.' },
-];
-
 async function getServices() {
   const sb = createClient();
   const { data } = await sb.from('services').select('*').eq('active', true).order('sort_order');
-  return data || [];
+  return getDisplayServices(data);
 }
 
 export default async function Home() {
@@ -81,13 +75,6 @@ export default async function Home() {
               <Link href="/prices" className="btn btn-ghost">Voir les tarifs</Link>
             </div>
           </Reveal>
-          <Reveal delay={410}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14, paddingTop: 24, borderTop: '1px solid var(--line)' }} className="hero-proof">
-              <div><div style={{ fontSize: 22, fontWeight: 300, color: 'var(--gold)' }}>Expertise</div><div style={{ fontSize: 12, color: 'var(--mute)' }}>soins pigmentaires</div></div>
-              <div><div style={{ fontSize: 22, fontWeight: 300, color: 'var(--gold)' }}>Adresse claire</div><div style={{ fontSize: 12, color: 'var(--mute)' }}>Paris 12e</div></div>
-              <div><div style={{ fontSize: 22, fontWeight: 300, color: 'var(--gold)' }}>Suivi simple</div><div style={{ fontSize: 12, color: 'var(--mute)' }}>email + WhatsApp</div></div>
-            </div>
-          </Reveal>
         </div>
 
         <Reveal delay={180}>
@@ -106,17 +93,6 @@ export default async function Home() {
             </div>
           </div>
         </Reveal>
-      </section>
-
-      <section style={{ padding: '0 24px 84px', position: 'relative', zIndex: 2 }}>
-        <div style={{ maxWidth: 1120, margin: '0 auto' }} className="trust-grid">
-          {TRUST_ITEMS.map(item => (
-            <div className="trust-item" key={item.title}>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(201,165,114,.14)', color: 'var(--gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon n="check" s={13} /></div>
-              <div><strong>{item.title}</strong><span>{item.text}</span></div>
-            </div>
-          ))}
-        </div>
       </section>
 
       <section style={{ padding: 'clamp(70px,10vw,120px) 24px', background: 'var(--bg-2)', position: 'relative', overflow: 'hidden' }}>
@@ -145,11 +121,11 @@ export default async function Home() {
                   <Link key={s.id} href={`/book?service=${s.id}`} className="price-row">
                     <div>
                       <span className="price-name">{s.name}</span>
-                      {s.note && <small className="price-note">{s.note}</small>}
+                      {s.note && !s.note.toLowerCase().startsWith('à partir') && <small className="price-note">{s.note}</small>}
                     </div>
                     <span className="price-duration">{s.duration} min</span>
                     <span>{s.old_price ? <span className="old-price">{s.old_price}€</span> : null}</span>
-                    <span className="new-price">{s.price}€</span>
+                    <span className="new-price">{formatServicePrice(s)}</span>
                     <span className="book-label">Réserver</span>
                   </Link>
                 ))}

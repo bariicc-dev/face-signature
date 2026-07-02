@@ -3,6 +3,7 @@ import { Footer } from '@/components/Footer';
 import { FabWA } from '@/components/FabWA';
 import { BookingWizard } from './BookingWizard';
 import { createClient } from '@/lib/supabase-server';
+import { getDisplayServices } from '@/lib/services';
 
 export default async function BookPage({ searchParams }: { searchParams: { service?: string } }) {
   const sb = createClient();
@@ -27,7 +28,7 @@ export default async function BookPage({ searchParams }: { searchParams: { servi
           <h1>Votre <em>rendez-vous</em>.</h1>
         </div>
         <BookingWizard
-          services={services || []}
+          services={getDisplayServices(services)}
           busy={busy || []}
           preselectId={searchParams.service}
         />

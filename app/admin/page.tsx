@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
 import { AdminDashboard } from './AdminDashboard';
+import { getDisplayServices } from '@/lib/services';
 
 export default async function AdminPage() {
   const sb = createClient();
@@ -16,5 +17,5 @@ export default async function AdminPage() {
     sb.from('services').select('*').order('sort_order'),
   ]);
 
-  return <AdminDashboard user={user} initialBookings={bookings || []} services={services || []} />;
+  return <AdminDashboard user={user} initialBookings={bookings || []} services={getDisplayServices(services)} />;
 }
