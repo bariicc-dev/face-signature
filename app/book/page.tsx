@@ -9,15 +9,6 @@ export default async function BookPage({ searchParams }: { searchParams: { servi
   const sb = createClient();
   const { data: services } = await sb.from('services').select('*').eq('active', true).order('sort_order');
 
-  // Pull busy slots for the next 60 days
-  const now = new Date();
-  const sixtyDays = new Date(now); sixtyDays.setDate(sixtyDays.getDate() + 60);
-  const { data: busy } = await sb
-    .from('bookings')
-    .select('appointment_at, duration, status')
-    .gte('appointment_at', now.toISOString())
-    .lte('appointment_at', sixtyDays.toISOString())
-    .neq('status', 'cancelled');
 
   return (
     <>
@@ -29,7 +20,6 @@ export default async function BookPage({ searchParams }: { searchParams: { servi
         </div>
         <BookingWizard
           services={getDisplayServices(services)}
-          busy={busy || []}
           preselectId={searchParams.service}
         />
       </div>

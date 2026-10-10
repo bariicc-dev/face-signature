@@ -12,10 +12,11 @@ export default async function AdminPage() {
   }
 
   // Load all bookings + services
-  const [{ data: bookings }, { data: services }] = await Promise.all([
+  const [{ data: bookings }, { data: services }, { data: periods, error: periodsError }] = await Promise.all([
     sb.from('bookings').select('*, services(*)').order('appointment_at', { ascending: false }),
     sb.from('services').select('*').order('sort_order'),
+    sb.from('blocked_periods').select('*').order('starts_at'),
   ]);
 
-  return <AdminDashboard user={user} initialBookings={bookings || []} services={getDisplayServices(services)} />;
+  return <AdminDashboard user={user} initialBookings={bookings || []} services={getDisplayServices(services)} initialBlockedPeriods={periods || []} schedulingError={periodsError ? 'Les absences ne peuvent pas être chargées. Vérifiez que la mise à jour Supabase a été appliquée.' : undefined} />;
 }
