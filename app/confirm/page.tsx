@@ -4,6 +4,7 @@ import { Footer } from '@/components/Footer';
 import { FabWA } from '@/components/FabWA';
 import { Icon } from '@/components/Icon';
 import { createAdminClient } from '@/lib/supabase-server';
+import { bookingServiceName, SALON_TIME_ZONE } from '@/lib/scheduling';
 
 const ADDRESS = '152 Rue de Charenton, 75012 Paris';
 
@@ -26,11 +27,10 @@ export default async function ConfirmPage({ searchParams }: { searchParams: { id
   if (!booking) return <NotFound />;
 
   const d = new Date(booking.appointment_at);
-  const dateStr = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const timeStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const svc = booking.services;
-  const serviceName = svc?.name || 'Soin Face Signature';
-  const duration = svc?.duration || booking.duration || 60;
+  const dateStr = d.toLocaleDateString('fr-FR', { timeZone: SALON_TIME_ZONE, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const timeStr = d.toLocaleTimeString('fr-FR', { timeZone: SALON_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
+  const serviceName = bookingServiceName(booking);
+  const duration = booking.duration;
   const reference = `FS-${booking.id.slice(0, 8).toUpperCase()}`;
   const whatsappUrl = `https://wa.me/33695241807?text=${encodeURIComponent(`Bonjour Face Signature, j'ai une question concernant ma réservation ${reference}.`)}`;
 
@@ -54,7 +54,8 @@ export default async function ConfirmPage({ searchParams }: { searchParams: { id
 
           <div className="summary" style={{ textAlign: 'left', background: 'var(--bg-3)', marginTop: 0 }}>
             <div className="summary-row"><span className="l">Référence</span><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{reference}</span></div>
-            <div className="summary-row"><span className="l">Soin</span><span>{serviceName}</span></div>
+            <div className="summary-row"><span className="l">Prestations</span><span>{serviceName}</span></div>
+            {booking.service_items?.length > 1 && <div className="summary-row"><span className="l">Organisation</span><span>{booking.treatment_mode === 'simultaneous' ? 'En même temps' : 'À la suite'}</span></div>}
             <div className="summary-row"><span className="l">Date</span><span style={{ textTransform: 'capitalize' }}>{dateStr}</span></div>
             <div className="summary-row"><span className="l">Heure</span><span>{timeStr}</span></div>
             <div className="summary-row"><span className="l">Durée</span><span>{duration} min</span></div>

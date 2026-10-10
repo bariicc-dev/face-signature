@@ -4,9 +4,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon, Logo } from '@/components/Icon';
 import { createClient } from '@/lib/supabase-browser';
+import { BlockedPeriods } from './BlockedPeriods';
+import { appointmentColumns, bookingServiceName, parisAppointment, parisDateInput, parisTimeInput, SALON_TIME_ZONE, treatmentSummary, type TreatmentMode, type Treatment, type BlockedPeriod } from '@/lib/scheduling';
 
 type Status = 'pending' | 'confirmed' | 'cancelled' | 'completed';
-type Tab = 'today' | 'agenda' | 'add' | 'clients' | 'stats';
+type Tab = 'today' | 'agenda' | 'add' | 'clients' | 'stats' | 'availability';
 type AgendaMode = 'day' | 'week';
 
 type Service = {
@@ -30,6 +32,8 @@ type Booking = {
   status: Status;
   is_new?: boolean;
   services?: Service | null;
+  service_items?: Treatment[];
+  treatment_mode?: TreatmentMode;
 };
 
 type Client = {
@@ -46,7 +50,8 @@ type ManualForm = {
   clientName: string;
   phone: string;
   email: string;
-  serviceId: string;
+  serviceIds: string[];
+  treatmentMode: TreatmentMode;
   date: string;
   time: string;
   notes: string;
@@ -104,7 +109,7 @@ function toInputDate(date: Date) {
 }
 
 function formatTime(date: Date | string) {
-  return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return new Date(date).toLocaleTimeString('fr-FR', { timeZone: SALON_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDay(date: Date | string) {
@@ -143,8 +148,9 @@ function initialForm(services: Service[], slot?: { date: string; time: string })
     clientName: '',
     phone: '',
     email: '',
-    serviceId: service?.id || '',
-    date: slot?.date || toInputDate(new Date()),
+    serviceIds: service ? [service.id] : [],
+    treatmentMode: 'simultaneous',
+    date: slot?.date || parisDateInput(),
     time: slot?.time || '10:00',
     notes: '',
     status: 'confirmed',
@@ -220,18 +226,21 @@ function getMonthStats(bookings: Booking[], month: Date) {
   };
 }
 
-function getBookingLayout(booking: Booking) {
-  const start = new Date(booking.appointment_at);
-  const minutes = start.getHours() * 60 + start.getMinutes();
-  const top = Math.max(0, ((minutes - DAY_START * 60) / 60) * HOUR_HEIGHT);
-  const height = Math.max(44, (booking.duration / 60) * HOUR_HEIGHT - 6);
+function getBookingLayout(booking: Booking, day: Date) {
+  const boardStart = Date.parse(parisAppointment(toInputDate(day), `${String(DAY_START).padStart(2, '0')}:00`));
+  const boardEnd = Date.parse(parisAppointment(toInputDate(day), `${DAY_END}:00`));
+  const start = Math.max(boardStart, Date.parse(booking.appointment_at));
+  const end = Math.min(boardEnd, Date.parse(booking.appointment_at) + booking.duration * 60000);
+  const top = (start - boardStart) / 3600000 * HOUR_HEIGHT;
+  const height = Math.max(24, (end - start) / 3600000 * HOUR_HEIGHT - 6);
   return { top, height };
 }
 
-export function AdminDashboard({ user, initialBookings, services }: { user: any; initialBookings: Booking[]; services: Service[] }) {
+export function AdminDashboard({ user, initialBookings, services, initialBlockedPeriods = [], schedulingError }: { user: any; initialBookings: Booking[]; services: Service[]; initialBlockedPeriods?: BlockedPeriod[]; schedulingError?: string }) {
   const router = useRouter();
   const sb = createClient();
   const [bookings, setBookings] = useState<Booking[]>(initialBookings);
+  const [blockedPeriods, setBlockedPeriods] = useState<BlockedPeriod[]>(initialBlockedPeriods);
   const [tab, setTab] = useState<Tab>('today');
   const [toast, setToast] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
@@ -243,6 +252,10 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, async () => {
         const { data } = await sb.from('bookings').select('*, services(*)').order('appointment_at', { ascending: false });
         if (data) setBookings(data as Booking[]);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_periods' }, async () => {
+        const { data } = await sb.from('blocked_periods').select('*').order('starts_at');
+        if (data) setBlockedPeriods(data as BlockedPeriod[]);
       })
       .subscribe();
     return () => { sb.removeChannel(channel); };
@@ -312,6 +325,7 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
       </header>
 
       <main style={{ maxWidth: 1180, margin: '0 auto', padding: 16 }}>
+        {schedulingError && <p role="alert" style={{ color: 'var(--danger)', marginBottom: 14 }}>{schedulingError}</p>}
         {tab === 'today' && (
           <TodayTab
             bookings={todayBookings}
@@ -319,9 +333,9 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
             pendingCount={pendingCount}
             servicesCount={services.length}
             onSelect={setSelected}
-            onConfirm={(id: string) => patchBooking(id, { status: 'confirmed' }).then(() => showToast('RDV confirme'))}
-            onCancel={(id: string) => patchBooking(id, { status: 'cancelled' }).then(() => showToast('RDV annule'))}
-            onComplete={(id: string) => patchBooking(id, { status: 'completed' }).then(() => showToast('RDV termine'))}
+            onConfirm={(id: string) => patchBooking(id, { status: 'confirmed' }).then((booking) => booking && showToast('RDV confirme'))}
+            onCancel={(id: string) => patchBooking(id, { status: 'cancelled' }).then((booking) => booking && showToast('RDV annule'))}
+            onComplete={(id: string) => patchBooking(id, { status: 'completed' }).then((booking) => booking && showToast('RDV termine'))}
             onAdd={() => openAddAt()}
             onAgenda={() => setTab('agenda')}
           />
@@ -331,6 +345,8 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
             bookings={bookings}
             onSelect={setSelected}
             onAddAt={openAddAt}
+            blockedPeriods={blockedPeriods}
+            onManageAbsences={() => setTab('availability')}
           />
         )}
         {tab === 'add' && (
@@ -339,7 +355,7 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
             clients={clients}
             initialSlot={slot}
             onCreated={(booking) => {
-              setBookings((items) => [booking, ...items]);
+              setBookings((items) => [booking, ...items.filter((item) => item.id !== booking.id)]);
               setSlot(undefined);
               setTab('agenda');
               showToast('RDV ajoute');
@@ -348,6 +364,7 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
         )}
         {tab === 'clients' && <ClientsTab clients={clients} />}
         {tab === 'stats' && <StatsTab bookings={bookings} />}
+        {tab === 'availability' && <BlockedPeriods periods={blockedPeriods} onCreated={(period) => setBlockedPeriods((items) => [...items.filter((item) => item.id !== period.id), period])} onDeleted={(id) => setBlockedPeriods((items) => items.filter((period) => period.id !== id))} />}
       </main>
 
       <BottomNav active={tab} pendingCount={pendingCount} onChange={setTab} />
@@ -356,9 +373,9 @@ export function AdminDashboard({ user, initialBookings, services }: { user: any;
         <BookingSheet
           booking={selected}
           onClose={() => setSelected(null)}
-          onConfirm={(id) => patchBooking(id, { status: 'confirmed' }).then(() => showToast('RDV confirme'))}
-          onCancel={(id) => patchBooking(id, { status: 'cancelled' }).then(() => showToast('RDV annule'))}
-          onComplete={(id) => patchBooking(id, { status: 'completed' }).then(() => showToast('RDV termine'))}
+          onConfirm={(id) => patchBooking(id, { status: 'confirmed' }).then((booking) => booking && showToast('RDV confirme'))}
+          onCancel={(id) => patchBooking(id, { status: 'cancelled' }).then((booking) => booking && showToast('RDV annule'))}
+          onComplete={(id) => patchBooking(id, { status: 'completed' }).then((booking) => booking && showToast('RDV termine'))}
           onReschedule={(id, appointmentAt, duration) => patchBooking(id, { appointmentAt, duration }).then((booking) => booking && showToast('RDV deplace'))}
           onDelete={deleteBooking}
         />
@@ -380,10 +397,11 @@ function BottomNav({ active, pendingCount, onChange }: { active: Tab; pendingCou
     { key: 'add', label: 'Ajouter', icon: 'plus' },
     { key: 'clients', label: 'Clients', icon: 'users' },
     { key: 'stats', label: 'Stats', icon: 'chart' },
+    { key: 'availability', label: 'Absences', icon: 'calendar' },
   ];
   return (
     <nav style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, background: 'rgba(23,20,19,.96)', borderTop: '1px solid var(--line)', backdropFilter: 'blur(18px)', padding: '7px 6px env(safe-area-inset-bottom)' }}>
-      <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 2 }}>
+      <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2 }}>
         {items.map((item) => (
           <button key={item.key} type="button" onClick={() => onChange(item.key)} style={{ minHeight: 54, borderRadius: 12, position: 'relative', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 4, color: active === item.key ? 'var(--gold)' : 'var(--mute)', background: active === item.key ? 'rgba(201,165,114,.08)' : 'transparent', fontSize: 10.5, fontWeight: 600 }}>
             <Icon n={item.icon} s={19} />
@@ -419,7 +437,7 @@ function TodayTab({ bookings, stats, pendingCount, servicesCount, onSelect, onCo
   );
 }
 
-function AgendaTab({ bookings, onSelect, onAddAt }: { bookings: Booking[]; onSelect: (booking: Booking) => void; onAddAt: (slot: { date: string; time: string }) => void }) {
+function AgendaTab({ bookings, blockedPeriods, onManageAbsences, onSelect, onAddAt }: { bookings: Booking[]; blockedPeriods: BlockedPeriod[]; onManageAbsences: () => void; onSelect: (booking: Booking) => void; onAddAt: (slot: { date: string; time: string }) => void }) {
   const [mode, setMode] = useState<AgendaMode>('day');
   const [cursor, setCursor] = useState(() => new Date());
   const weekStart = startOfWeek(cursor);
@@ -438,6 +456,7 @@ function AgendaTab({ bookings, onSelect, onAddAt }: { bookings: Booking[]; onSel
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <button className="btn btn-ghost" onClick={onManageAbsences}><Icon n="calendar" s={14} /> Bloquer un créneau ou une période</button>
       <Segmented value={mode} onChange={setMode} options={[{ value: 'day', label: 'Jour' }, { value: 'week', label: 'Semaine' }]} />
       <MonthPicker days={monthDays} cursor={cursor} onPick={setCursor} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -445,7 +464,7 @@ function AgendaTab({ bookings, onSelect, onAddAt }: { bookings: Booking[]; onSel
         <div style={{ textAlign: 'center', textTransform: 'capitalize', fontSize: 17, fontWeight: 600 }}>{title}</div>
         <button className="icon-btn" onClick={() => move(1)}><Icon n="chev" s={15} /></button>
       </div>
-      <CalendarBoard days={days} bookings={bookings} onSelect={onSelect} onAddAt={onAddAt} />
+      <CalendarBoard days={days} bookings={bookings} blockedPeriods={blockedPeriods} onManageAbsences={onManageAbsences} onSelect={onSelect} onAddAt={onAddAt} />
     </div>
   );
 }
@@ -477,7 +496,7 @@ function MonthPicker({ days, cursor, onPick }: { days: Date[]; cursor: Date; onP
   );
 }
 
-function CalendarBoard({ days, bookings, onSelect, onAddAt }: { days: Date[]; bookings: Booking[]; onSelect: (booking: Booking) => void; onAddAt: (slot: { date: string; time: string }) => void }) {
+function CalendarBoard({ days, bookings, blockedPeriods, onManageAbsences, onSelect, onAddAt }: { days: Date[]; bookings: Booking[]; blockedPeriods: BlockedPeriod[]; onManageAbsences: () => void; onSelect: (booking: Booking) => void; onAddAt: (slot: { date: string; time: string }) => void }) {
   const hours = Array.from({ length: DAY_END - DAY_START }, (_, index) => DAY_START + index);
   return (
     <div style={{ overflowX: 'auto', borderRadius: 16, border: '1px solid var(--line)', background: 'var(--bg-2)' }}>
@@ -494,22 +513,33 @@ function CalendarBoard({ days, bookings, onSelect, onAddAt }: { days: Date[]; bo
           {hours.map((hour) => <div key={hour} style={{ height: HOUR_HEIGHT, color: 'var(--mute)', fontSize: 11, padding: '5px 6px', borderTop: '1px solid var(--line)' }}>{String(hour).padStart(2, '0')}:00</div>)}
         </div>
         {days.map((day) => {
-          const dayBookings = bookings.filter((booking) => isSameDay(new Date(booking.appointment_at), day));
+          const boardStart = Date.parse(parisAppointment(toInputDate(day), `${String(DAY_START).padStart(2, '0')}:00`));
+          const boardEnd = Date.parse(parisAppointment(toInputDate(day), `${DAY_END}:00`));
+          const dayBookings = bookings.filter((booking) => booking.status !== 'cancelled' && Date.parse(booking.appointment_at) < boardEnd && Date.parse(booking.appointment_at) + booking.duration * 60000 > boardStart);
+          const columns = appointmentColumns(dayBookings);
+          const dayPeriods = blockedPeriods.filter((period) => Date.parse(period.starts_at) < boardEnd && Date.parse(period.ends_at) > boardStart);
           return (
             <div key={day.toISOString()} style={{ position: 'relative', minHeight: HOUR_HEIGHT * hours.length, borderLeft: '1px solid var(--line)' }}>
               {hours.map((hour) => (
                 <button key={hour} onClick={() => onAddAt({ date: toInputDate(day), time: `${String(hour).padStart(2, '0')}:00` })} style={{ display: 'block', width: '100%', height: HOUR_HEIGHT, borderTop: '1px solid var(--line)', background: 'transparent' }} aria-label={`Ajouter ${hour}:00`} />
               ))}
+              {dayPeriods.map((period) => {
+                const from = Math.max(boardStart, Date.parse(period.starts_at));
+                const until = Math.min(boardEnd, Date.parse(period.ends_at));
+                if (until <= from) return null;
+                return <button key={period.id} type="button" onClick={onManageAbsences} aria-label={`Période bloquée : ${period.label}`} style={{ position: 'absolute', left: 4, right: 4, top: (from - boardStart) / 3600000 * HOUR_HEIGHT, height: (until - from) / 3600000 * HOUR_HEIGHT, padding: 8, textAlign: 'left', borderRadius: 8, color: '#e57975', border: '1px dashed #e57975', background: 'repeating-linear-gradient(135deg, rgba(229,121,117,.12), rgba(229,121,117,.12) 8px, rgba(229,121,117,.04) 8px, rgba(229,121,117,.04) 16px)', overflow: 'hidden' }}>Indisponible · {period.label}</button>;
+              })}
               {dayBookings.map((booking) => {
-                const layout = getBookingLayout(booking);
+                const layout = getBookingLayout(booking, day);
+                const column = columns[booking.id];
                 return (
-                  <button key={booking.id} onClick={(event) => { event.stopPropagation(); onSelect(booking); }} style={{ position: 'absolute', left: 7, right: 7, top: layout.top + 4, minHeight: layout.height, borderRadius: 12, padding: 9, background: `linear-gradient(135deg, ${statusColor[booking.status]}22, var(--bg-3))`, border: `1px solid ${statusColor[booking.status]}88`, color: 'var(--cream)', textAlign: 'left', overflow: 'hidden', boxShadow: '0 10px 26px rgba(0,0,0,.22)' }}>
+                  <button key={booking.id} onClick={(event) => { event.stopPropagation(); onSelect(booking); }} style={{ position: 'absolute', left: `calc(${column.column * 100 / column.columns}% + 4px)`, width: `calc(${100 / column.columns}% - 8px)`, top: layout.top + 4, minHeight: layout.height, borderRadius: 12, padding: 9, background: `linear-gradient(135deg, ${statusColor[booking.status]}22, var(--bg-3))`, border: `1px solid ${statusColor[booking.status]}88`, color: 'var(--cream)', textAlign: 'left', overflow: 'hidden', boxShadow: '0 10px 26px rgba(0,0,0,.22)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                       <strong style={{ fontSize: 12 }}>{formatTime(booking.appointment_at)}</strong>
                       <span style={{ color: statusColor[booking.status], fontSize: 10, fontWeight: 700 }}>{statusLabel[booking.status]}</span>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 700, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{booking.client_name}</div>
-                    <div style={{ color: 'var(--mute)', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{booking.services?.name}</div>
+                    <div style={{ color: 'var(--mute)', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{bookingServiceName(booking)}</div>
                   </button>
                 );
               })}
@@ -531,33 +561,30 @@ function AddTab({ services, clients, initialSlot, onCreated }: { services: Servi
     setForm(initialForm(services, initialSlot));
   }, [initialSlot?.date, initialSlot?.time, services]);
 
-  const selectedService = services.find((service) => service.id === form.serviceId);
+  const selectedServices = services.filter((service) => form.serviceIds.includes(service.id));
+  const summary = treatmentSummary(selectedServices, form.treatmentMode);
   const suggestions = clients.filter((client) => {
     const text = `${client.name} ${client.phone} ${client.email}`.toLowerCase();
     return query.trim().length >= 2 && text.includes(query.toLowerCase());
   }).slice(0, 5);
 
-  const updateService = (serviceId: string) => {
-    const service = services.find((item) => item.id === serviceId);
-    setForm((current) => ({
-      ...current,
-      serviceId,
-      total: service ? String(service.price) : current.total,
-      duration: service ? String(service.duration) : current.duration,
-    }));
+  const updateSelection = (serviceIds: string[], treatmentMode = form.treatmentMode) => {
+    const next = treatmentSummary(services.filter((service) => serviceIds.includes(service.id)), treatmentMode);
+    setForm((current) => ({ ...current, serviceIds, treatmentMode, total: String(next.total), duration: String(next.duration) }));
   };
 
   const submit = async () => {
     setSaving(true);
     setError(null);
     try {
-      const appointmentAt = new Date(`${form.date}T${form.time}:00`);
+      const appointmentAt = parisAppointment(form.date, form.time);
       const response = await fetch('/api/admin/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceId: form.serviceId,
-          appointmentAt: appointmentAt.toISOString(),
+          serviceIds: form.serviceIds,
+          treatmentMode: form.treatmentMode,
+          appointmentAt,
           name: form.clientName,
           phone: form.phone,
           email: form.email || null,
@@ -580,7 +607,7 @@ function AddTab({ services, clients, initialSlot, onCreated }: { services: Servi
     }
   };
 
-  const valid = form.clientName.trim() && form.phone.trim() && form.serviceId && form.date && form.time && Number(form.total) > 0 && Number(form.duration) > 0;
+  const valid = form.clientName.trim() && form.phone.trim() && form.serviceIds.length > 0 && form.date && form.time && Number(form.total) > 0 && Number(form.duration) > 0;
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -607,11 +634,20 @@ function AddTab({ services, clients, initialSlot, onCreated }: { services: Servi
             <Field label="Telephone"><input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="06 12 34 56 78" /></Field>
             <Field label="Email optionnel"><input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value, sendClientEmail: e.target.value ? form.sendClientEmail : false })} placeholder="cliente@email.com" /></Field>
           </div>
-          <Field label="Soin">
-            <select className="select" value={form.serviceId} onChange={(e) => updateService(e.target.value)}>
-              {services.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
-            </select>
+          <Field label="Prestations (plusieurs choix possibles)">
+            <div style={{ display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
+              {services.map((service) => <label key={service.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 10, background: 'var(--bg-3)', borderRadius: 8, fontSize: 13 }}>
+                <input type="checkbox" checked={form.serviceIds.includes(service.id)} onChange={() => updateSelection(form.serviceIds.includes(service.id) ? form.serviceIds.filter((id) => id !== service.id) : [...form.serviceIds, service.id])} />
+                {service.name} · {money(service.price)}
+              </label>)}
+            </div>
           </Field>
+          {form.serviceIds.length > 1 && <Field label="Organisation des prestations">
+            <select className="select" value={form.treatmentMode} onChange={(e) => updateSelection(form.serviceIds, e.target.value as TreatmentMode)}>
+              <option value="simultaneous">En même temps</option><option value="sequential">À la suite</option>
+            </select>
+          </Field>}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="Date"><input className="input" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
             <Field label="Heure"><input className="input" type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} /></Field>
@@ -633,7 +669,7 @@ function AddTab({ services, clients, initialSlot, onCreated }: { services: Servi
           </label>
         </div>
         <div className="summary">
-          <div className="summary-row"><span className="l">Soin</span><span>{selectedService?.name || '-'}</span></div>
+          <div className="summary-row"><span className="l">Soin</span><span>{summary.name || '-'}</span></div>
           <div className="summary-row"><span className="l">Date</span><span>{form.date ? new Date(`${form.date}T12:00:00`).toLocaleDateString('fr-FR') : '-'}</span></div>
           <div className="summary-row"><span className="l">Total</span><span style={{ color: 'var(--gold)' }}>{money(Number(form.total))}</span></div>
         </div>
@@ -713,7 +749,7 @@ function BookingCard({ booking, onSelect, onConfirm, onCancel, onComplete }: any
         <div style={{ minWidth: 0 }}>
           <div style={{ color: 'var(--gold)', fontSize: 13, fontWeight: 700 }}>{formatTime(date)} · {booking.duration} min</div>
           <div style={{ fontWeight: 700, fontSize: 16, marginTop: 2 }}>{booking.client_name}</div>
-          <div style={{ color: 'var(--mute)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{booking.services?.name || 'Soin'}</div>
+          <div style={{ color: 'var(--mute)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{bookingServiceName(booking)}</div>
         </div>
         <div style={{ textAlign: 'right', display: 'grid', justifyItems: 'end', gap: 6 }}>
           <span className={`pill ${booking.status}`}>{statusLabel[booking.status]}</span>
@@ -738,8 +774,8 @@ function BookingCard({ booking, onSelect, onConfirm, onCancel, onComplete }: any
 
 function BookingSheet({ booking, onClose, onConfirm, onCancel, onComplete, onReschedule, onDelete }: any) {
   const date = new Date(booking.appointment_at);
-  const [editDate, setEditDate] = useState(toInputDate(date));
-  const [editTime, setEditTime] = useState(`${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`);
+  const [editDate, setEditDate] = useState(parisDateInput(date));
+  const [editTime, setEditTime] = useState(parisTimeInput(date));
   const [editDuration, setEditDuration] = useState(String(booking.duration));
   const phone = whatsappPhone(booking.client_phone);
   return (
@@ -749,7 +785,7 @@ function BookingSheet({ booking, onClose, onConfirm, onCancel, onComplete, onRes
           <div>
             <div style={{ color: 'var(--gold)', textTransform: 'capitalize', fontSize: 13 }}>{formatDay(date)} · {formatTime(date)}</div>
             <h2 style={{ margin: '4px 0 0', fontSize: 22, fontWeight: 700 }}>{booking.client_name}</h2>
-            <div style={{ color: 'var(--mute)', fontSize: 13 }}>{booking.services?.name} · {money(booking.total)}</div>
+            <div style={{ color: 'var(--mute)', fontSize: 13 }}>{bookingServiceName(booking)} · {money(booking.total)}</div>
           </div>
           <button className="icon-btn" onClick={onClose}><Icon n="close" s={15} /></button>
         </div>
@@ -758,15 +794,16 @@ function BookingSheet({ booking, onClose, onConfirm, onCancel, onComplete, onRes
           <Row label="Telephone" value={booking.client_phone || '-'} />
           <Row label="Email" value={booking.client_email || '-'} />
           <Row label="Duree" value={`${booking.duration} min`} />
+          {booking.service_items?.length > 1 && <Row label="Organisation" value={booking.treatment_mode === 'simultaneous' ? 'En même temps' : 'À la suite'} />}
           {booking.notes && <Row label="Notes" value={booking.notes} />}
         </Card>
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <Field label="Date"><input className="input" type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} /></Field>
             <Field label="Heure"><input className="input" type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} /></Field>
-            <Field label="Duree"><input className="input" type="number" min="1" value={editDuration} onChange={(e) => setEditDuration(e.target.value)} /></Field>
+            <Field label="Duree"><input className="input" type="number" min="1" max="1440" value={editDuration} onChange={(e) => setEditDuration(e.target.value)} /></Field>
           </div>
-          <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }} onClick={() => onReschedule(booking.id, new Date(`${editDate}T${editTime}:00`).toISOString(), Number(editDuration))}>
+          <button className="btn btn-gold" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }} onClick={() => onReschedule(booking.id, parisAppointment(editDate, editTime), Number(editDuration))}>
             <Icon n="calendar" s={14} /> Reprogrammer
           </button>
         </Card>

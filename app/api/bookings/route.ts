@@ -1,91 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase-server';
 import { sendBookingEmails } from '@/lib/email';
-import { getOfficialService, serviceUpsertPayload } from '@/lib/services';
+import { BookingInputError, bookingError, resolveTreatments, validAppointment } from '@/lib/booking-server';
+import { parisDateInput, parisTimeInput, parisAppointment } from '@/lib/scheduling';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { serviceId, appointmentAt, name, email, phone, notes } = body;
-
-    if (!serviceId || !appointmentAt || !name || !email || !phone) {
-      return NextResponse.json({ error: 'Champs manquants' }, { status: 400 });
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+    if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || phone.replace(/\D/g, '').length < 9) {
+      throw new BookingInputError('Renseignez votre nom, un email valide et un téléphone.');
     }
-
+    const appointmentAt = validAppointment(body.appointmentAt);
     const sb = createAdminClient();
-
-    // Load service to get price & duration
-    const officialService = getOfficialService(serviceId);
-    const { data: dbSvc } = await sb.from('services').select('*').eq('id', serviceId).maybeSingle();
-    const svc = officialService ? { ...dbSvc, ...officialService } : dbSvc;
-    if (officialService) {
-      await sb.from('services').upsert(serviceUpsertPayload(officialService), { onConflict: 'id' });
+    const selection = await resolveTreatments(sb, body);
+    const time = parisTimeInput(appointmentAt);
+    const closing = parisAppointment(parisDateInput(appointmentAt), '20:00');
+    if (Date.parse(appointmentAt) <= Date.now() || time < '10:00' || time > '18:00' || !['00', '30'].includes(time.slice(3)) || Date.parse(appointmentAt) + selection.duration * 60000 > Date.parse(closing)) {
+      throw new BookingInputError('Choisissez un créneau disponible pendant les horaires d’ouverture.');
     }
-    if (!svc) {
-      return NextResponse.json({ error: 'Soin introuvable' }, { status: 404 });
-    }
-
-    // Conflict check: any non-cancelled booking that overlaps?
-    const start = new Date(appointmentAt);
-    const end = new Date(start); end.setMinutes(end.getMinutes() + svc.duration);
-
-    // Pull bookings on that day
-    const dayStart = new Date(start); dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(start); dayEnd.setHours(23, 59, 59, 999);
-
-    const { data: sameDay } = await sb
-      .from('bookings')
-      .select('appointment_at, duration, status')
-      .gte('appointment_at', dayStart.toISOString())
-      .lte('appointment_at', dayEnd.toISOString())
-      .neq('status', 'cancelled');
-
-    const conflict = (sameDay || []).some(b => {
-      const bs = new Date(b.appointment_at);
-      const be = new Date(bs); be.setMinutes(be.getMinutes() + b.duration);
-      return start < be && end > bs;
-    });
-
-    if (conflict) {
-      return NextResponse.json({ error: 'Ce créneau vient d\'être pris. Veuillez en choisir un autre.' }, { status: 409 });
-    }
-
-    // Insert booking
-    const { data: booking, error: insErr } = await sb.from('bookings').insert({
-      service_id: serviceId,
+    const notes = typeof body.notes === 'string' ? body.notes.trim() : null;
+    // The database serializes schedule writes and checks capacity and closures atomically.
+    const { data: booking, error } = await sb.from('bookings').insert({
+      service_id: selection.items[0].id,
+      service_items: selection.items,
+      treatment_mode: selection.mode,
       client_name: name,
       client_email: email,
       client_phone: phone,
-      appointment_at: start.toISOString(),
-      duration: svc.duration,
-      total: svc.price,
+      appointment_at: appointmentAt,
+      duration: selection.duration,
+      total: selection.total,
       notes: notes || null,
       status: 'pending',
       is_new: true,
     }).select().single();
+    if (error) throw error;
+    if (!booking) throw new Error('Booking insert returned no result');
 
-    if (insErr || !booking) {
-      console.error(insErr);
-      return NextResponse.json({ error: 'Erreur lors de la création' }, { status: 500 });
-    }
-
-    // Send emails (don't block on failure)
-    sendBookingEmails({
-      id: booking.id,
-      clientName: name,
-      clientEmail: email,
-      clientPhone: phone,
-      serviceName: svc.name,
-      serviceCategory: svc.category,
-      appointmentAt: booking.appointment_at,
-      duration: svc.duration,
-      total: svc.price,
-      notes,
-    }).catch(e => console.error('Email send failed:', e));
-
-    return NextResponse.json({ id: booking.id, ok: true });
-  } catch (e: any) {
-    console.error(e);
-    return NextResponse.json({ error: e.message || 'Erreur serveur' }, { status: 500 });
-  }
+    await sendBookingEmails({
+      id: booking.id, clientName: name, clientEmail: email, clientPhone: phone,
+      serviceName: selection.name, serviceCategory: Array.from(new Set(selection.items.map((item) => item.category))).join(' / '),
+      appointmentAt: booking.appointment_at, duration: booking.duration, total: booking.total, notes,
+    }).catch((error) => console.error('Booking email failed:', error));
+    return NextResponse.json({ id: booking.id, ok: true }, { status: 201 });
+  } catch (error) { return bookingError(error); }
 }

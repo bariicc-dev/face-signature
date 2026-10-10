@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { SALON_TIME_ZONE } from './scheduling';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -6,10 +7,10 @@ const FROM = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 const ADMIN = process.env.ADMIN_EMAIL || 'admin@example.com';
 
 function formatDateFr(d: Date) {
-  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString('fr-FR', { timeZone: SALON_TIME_ZONE, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 function formatTimeFr(d: Date) {
-  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('fr-FR', { timeZone: SALON_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
 }
 
 // Shared email shell
